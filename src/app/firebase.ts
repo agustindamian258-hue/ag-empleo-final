@@ -1,12 +1,11 @@
-
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "TU_KEY",
-  authDomain: "TU_DOMINIO",
-  projectId: "TU_ID",
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_AUTH_DOMAIN",
+  projectId: "TU_PROJECT_ID",
 };
 
 const app = initializeApp(firebaseConfig);
