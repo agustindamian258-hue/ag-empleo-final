@@ -14,6 +14,11 @@ export default function CVBuilder() {
 
   const [template, setTemplate] = useState("1");
 
+  // 1. FUNCIÓN PARA DESCARGAR / IMPRIMIR
+  const handlePrint = () => {
+    window.print();
+  };
+
   const handleChange = (e: any) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -24,45 +29,67 @@ export default function CVBuilder() {
       <h1 style={{ textAlign: "center", margin: "20px 0" }}>Crear CV PRO</h1>
 
       {/* FORMULARIO DE ENTRADA */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 15px" }}>
+      <div className="no-print" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 15px" }}>
         <input name="name" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Nombre completo" onChange={handleChange} />
         <input name="email" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Email" onChange={handleChange} />
         <input name="phone" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Teléfono" onChange={handleChange} />
 
         <textarea name="summary" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc", height: "80px" }} placeholder="Resumen profesional (clave ATS)" onChange={handleChange} />
 
-        <textarea name="skills" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Skills (separadas por coma: React, Firebase, Excel)" onChange={handleChange} />
+        <textarea name="skills" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Skills (separadas por coma)" onChange={handleChange} />
 
         <textarea name="experience" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc", height: "100px" }} placeholder="Experiencia (una por línea)" onChange={handleChange} />
 
         <textarea name="education" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Educación" onChange={handleChange} />
       </div>
 
-      {/* BOTONES DE SELECCIÓN DE PLANTILLA */}
-      <h2 style={{ padding: "0 15px", marginTop: "30px" }}>Elegir diseño</h2>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", padding: "0 15px", marginBottom: "20px" }}>
-        {["1", "2", "3", "4"].map((t) => (
+      {/* BOTONES DE SELECCIÓN */}
+      <div className="no-print">
+        <h2 style={{ padding: "0 15px", marginTop: "30px" }}>Elegir diseño</h2>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", padding: "0 15px", marginBottom: "20px" }}>
+          {["1", "2", "3", "4"].map((t) => (
+            <button 
+              key={t} 
+              onClick={() => setTemplate(t)} 
+              style={{ 
+                flex: "1 0 40%", 
+                padding: "10px", 
+                backgroundColor: template === t ? "#0070f3" : "#eee", 
+                color: template === t ? "white" : "black", 
+                border: "none", 
+                borderRadius: "5px",
+                fontWeight: "bold"
+              }}
+            >
+              Plantilla {t} {t === "4" ? "PRO" : ""}
+            </button>
+          ))}
+        </div>
+
+        {/* 2. BOTÓN PARA DESCARGAR PDF */}
+        <div style={{ padding: "0 15px", marginBottom: "20px" }}>
           <button 
-            key={t} 
-            onClick={() => setTemplate(t)} 
+            onClick={handlePrint}
             style={{ 
-              flex: "1 0 40%", 
-              padding: "10px", 
-              backgroundColor: template === t ? "#0070f3" : "#eee", 
-              color: template === t ? "white" : "black", 
+              width: "100%", 
+              padding: "15px", 
+              backgroundColor: "#28a745", 
+              color: "white", 
               border: "none", 
-              borderRadius: "5px",
-              fontWeight: "bold"
+              borderRadius: "5px", 
+              fontWeight: "bold",
+              fontSize: "1rem",
+              cursor: "pointer"
             }}
           >
-            Plantilla {t} {t === "4" ? "PRO" : ""}
+            Descargar CV en PDF
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* SECCIÓN DE VISTA PREVIA */}
-      <h2 style={{ padding: "0 15px" }}>Vista previa</h2>
-      <div style={{ padding: "0 15px", marginBottom: "50px" }}>
+      {/* 3. CONTENEDOR DE VISTA PREVIA (Para que salga bien en el PDF) */}
+      <h2 className="no-print" style={{ padding: "0 15px" }}>Vista previa</h2>
+      <div id="cv-preview" style={{ padding: "0 15px", marginBottom: "50px" }}>
 
         {/* PLANTILLA 1: CLÁSICA */}
         {template === "1" && (
@@ -133,38 +160,45 @@ export default function CVBuilder() {
           </div>
         )}
 
-        {/* PLANTILLA 4: PRO VISUAL (DOS COLUMNAS) */}
+        {/* PLANTILLA 4: PRO VISUAL */}
         {template === "4" && (
           <div style={{ display: "flex", border: "1px solid black", minHeight: "400px", backgroundColor: "white" }}>
-            {/* LADO IZQUIERDO (Gris) */}
             <div style={{ width: "35%", background: "#eee", padding: "15px", borderRight: "1px solid #ccc" }}>
-              <h3 style={{ fontSize: "1.2rem", marginBottom: "5px" }}>{form.name || "Tu Nombre"}</h3>
-              <p style={{ fontSize: "0.8rem", wordBreak: "break-all" }}>{form.email}</p>
+              <h3>{form.name || "Tu Nombre"}</h3>
+              <p style={{ fontSize: "0.8rem" }}>{form.email}</p>
               <p style={{ fontSize: "0.8rem" }}>{form.phone}</p>
-              <h4 style={{ marginTop: "25px", borderBottom: "1px solid #999" }}>Skills</h4>
-              <ul style={{ paddingLeft: "20px", fontSize: "0.9rem" }}>
+              <h4>Skills</h4>
+              <ul>
                 {form.skills.split(",").map((s, i) => (
                   <li key={i}>{s.trim()}</li>
                 ))}
               </ul>
             </div>
-            {/* LADO DERECHO (Blanco) */}
             <div style={{ width: "65%", padding: "15px" }}>
               <h3 style={{ borderBottom: "2px solid #eee" }}>Resumen</h3>
-              <p style={{ fontSize: "0.9rem" }}>{form.summary}</p>
+              <p>{form.summary}</p>
               <h3 style={{ borderBottom: "2px solid #eee", marginTop: "20px" }}>Experiencia</h3>
-              <ul style={{ paddingLeft: "20px", fontSize: "0.9rem" }}>
+              <ul>
                 {form.experience.split("\n").map((e, i) => (
-                  <li key={i} style={{ marginBottom: "5px" }}>{e}</li>
+                  <li key={i}>{e}</li>
                 ))}
               </ul>
               <h3 style={{ borderBottom: "2px solid #eee", marginTop: "20px" }}>Educación</h3>
-              <p style={{ fontSize: "0.9rem" }}>{form.education}</p>
+              <p>{form.education}</p>
             </div>
           </div>
         )}
-
       </div>
+
+      {/* ESTILO PARA QUE NO SE IMPRIMAN LOS BOTONES NI EL FORMULARIO */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          #cv-preview { padding: 0 !important; margin: 0 !important; border: none !important; }
+          body { background: white; }
+          navbar { display: none; }
+        }
+      `}</style>
     </>
   );
 }
