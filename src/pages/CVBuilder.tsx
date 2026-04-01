@@ -1,5 +1,6 @@
 import Navbar from "../components/Navbar";
 import { useState } from "react";
+import "./CVBuilder.css"; // <--- IMPORTANTE: Importamos los estilos aquí
 
 export default function CVBuilder() {
   const [form, setForm] = useState({
@@ -14,9 +15,8 @@ export default function CVBuilder() {
 
   const [template, setTemplate] = useState("1");
 
-  // 1. FUNCIÓN PARA DESCARGAR / IMPRIMIR
   const handlePrint = () => {
-    window.print();
+    window.print(); // Abre el menú de impresión/PDF
   };
 
   const handleChange = (e: any) => {
@@ -26,24 +26,19 @@ export default function CVBuilder() {
   return (
     <>
       <Navbar />
-      <h1 style={{ textAlign: "center", margin: "20px 0" }}>Crear CV PRO</h1>
+      <h1 className="no-print" style={{ textAlign: "center", margin: "20px 0" }}>Crear CV PRO</h1>
 
-      {/* FORMULARIO DE ENTRADA */}
+      {/* FORMULARIO (Se oculta al imprimir) */}
       <div className="no-print" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 15px" }}>
         <input name="name" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Nombre completo" onChange={handleChange} />
         <input name="email" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Email" onChange={handleChange} />
         <input name="phone" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Teléfono" onChange={handleChange} />
-
-        <textarea name="summary" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc", height: "80px" }} placeholder="Resumen profesional (clave ATS)" onChange={handleChange} />
-
+        <textarea name="summary" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc", height: "80px" }} placeholder="Resumen profesional" onChange={handleChange} />
         <textarea name="skills" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Skills (separadas por coma)" onChange={handleChange} />
-
         <textarea name="experience" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc", height: "100px" }} placeholder="Experiencia (una por línea)" onChange={handleChange} />
-
         <textarea name="education" style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }} placeholder="Educación" onChange={handleChange} />
       </div>
 
-      {/* BOTONES DE SELECCIÓN */}
       <div className="no-print">
         <h2 style={{ padding: "0 15px", marginTop: "30px" }}>Elegir diseño</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", padding: "0 15px", marginBottom: "20px" }}>
@@ -66,7 +61,6 @@ export default function CVBuilder() {
           ))}
         </div>
 
-        {/* 2. BOTÓN PARA DESCARGAR PDF */}
         <div style={{ padding: "0 15px", marginBottom: "20px" }}>
           <button 
             onClick={handlePrint}
@@ -77,9 +71,7 @@ export default function CVBuilder() {
               color: "white", 
               border: "none", 
               borderRadius: "5px", 
-              fontWeight: "bold",
-              fontSize: "1rem",
-              cursor: "pointer"
+              fontWeight: "bold"
             }}
           >
             Descargar CV en PDF
@@ -87,17 +79,15 @@ export default function CVBuilder() {
         </div>
       </div>
 
-      {/* 3. CONTENEDOR DE VISTA PREVIA (Para que salga bien en el PDF) */}
       <h2 className="no-print" style={{ padding: "0 15px" }}>Vista previa</h2>
-      <div id="cv-preview" style={{ padding: "0 15px", marginBottom: "50px" }}>
+      
+      {/* VISTA PREVIA (Usa el ID para el CSS de impresión) */}
+      <div id="cv-preview" className="cv-container">
 
-        {/* PLANTILLA 1: CLÁSICA */}
         {template === "1" && (
           <div style={{ border: "1px solid black", padding: "20px", backgroundColor: "white" }}>
-            <h2 style={{ textTransform: "uppercase", marginBottom: "5px" }}>{form.name || "Tu Nombre"}</h2>
-            <p style={{ borderBottom: "1px solid #000", paddingBottom: "10px" }}>{form.email} | {form.phone}</p>
-            <h3>Resumen</h3>
-            <p>{form.summary}</p>
+            <h2 style={{ textTransform: "uppercase" }}>{form.name || "Tu Nombre"}</h2>
+            <p>{form.email} | {form.phone}</p>
             <h3>Skills</h3>
             <ul>
               {form.skills.split(",").map((s, i) => (
@@ -110,19 +100,14 @@ export default function CVBuilder() {
                 <li key={i}>{e}</li>
               ))}
             </ul>
-            <h3>Educación</h3>
-            <p>{form.education}</p>
           </div>
         )}
 
-        {/* PLANTILLA 2: MODERNA */}
         {template === "2" && (
           <div style={{ border: "2px solid #444", padding: "20px", backgroundColor: "#f9f9f9" }}>
-            <h1 style={{ color: "#0070f3", marginBottom: "0" }}>{form.name || "Tu Nombre"}</h1>
-            <p style={{ color: "gray" }}>{form.email} | {form.phone}</p>
+            <h1 style={{ color: "#0070f3" }}>{form.name || "Tu Nombre"}</h1>
+            <p>{form.email} | {form.phone}</p>
             <hr />
-            <strong>PERFIL PROFESIONAL</strong>
-            <p>{form.summary}</p>
             <strong>HABILIDADES</strong>
             <ul style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
               {form.skills.split(",").map((s, i) => (
@@ -138,13 +123,9 @@ export default function CVBuilder() {
           </div>
         )}
 
-        {/* PLANTILLA 3: ATS FRIENDLY */}
         {template === "3" && (
           <div style={{ border: "1px dashed gray", padding: "20px", fontFamily: "serif" }}>
             <h2 style={{ textAlign: "center" }}>{form.name || "Tu Nombre"}</h2>
-            <p style={{ textAlign: "center", fontSize: "0.9rem" }}>{form.email} | {form.phone}</p>
-            <h4 style={{ borderBottom: "1px solid #ccc", marginTop: "20px" }}>PERFIL</h4>
-            <p>{form.summary}</p>
             <h4 style={{ borderBottom: "1px solid #ccc" }}>SKILLS</h4>
             <ul>
               {form.skills.split(",").map((s, i) => (
@@ -160,7 +141,6 @@ export default function CVBuilder() {
           </div>
         )}
 
-        {/* PLANTILLA 4: PRO VISUAL */}
         {template === "4" && (
           <div style={{ display: "flex", border: "1px solid black", minHeight: "400px", backgroundColor: "white" }}>
             <div style={{ width: "35%", background: "#eee", padding: "15px", borderRight: "1px solid #ccc" }}>
@@ -175,9 +155,7 @@ export default function CVBuilder() {
               </ul>
             </div>
             <div style={{ width: "65%", padding: "15px" }}>
-              <h3 style={{ borderBottom: "2px solid #eee" }}>Resumen</h3>
-              <p>{form.summary}</p>
-              <h3 style={{ borderBottom: "2px solid #eee", marginTop: "20px" }}>Experiencia</h3>
+              <h3 style={{ borderBottom: "2px solid #eee" }}>Experiencia</h3>
               <ul>
                 {form.experience.split("\n").map((e, i) => (
                   <li key={i}>{e}</li>
@@ -189,16 +167,6 @@ export default function CVBuilder() {
           </div>
         )}
       </div>
-
-      {/* ESTILO PARA QUE NO SE IMPRIMAN LOS BOTONES NI EL FORMULARIO */}
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          #cv-preview { padding: 0 !important; margin: 0 !important; border: none !important; }
-          body { background: white; }
-          navbar { display: none; }
-        }
-      `}</style>
     </>
   );
 }
