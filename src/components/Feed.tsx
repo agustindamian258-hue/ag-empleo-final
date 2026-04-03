@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, auth, storage } from "../app/firebase";
-import { 
-  collection, addDoc, query, orderBy, onSnapshot, 
-  doc, updateDoc, arrayUnion, arrayRemove, serverTimestamp 
-} from "firebase/firestore";
+import { collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -28,10 +25,7 @@ export default function Feed() {
 
   const handleFile = (e: any) => {
     const f = e.target.files[0];
-    if (f) {
-      setFile(f);
-      setPreview(URL.createObjectURL(f));
-    }
+    if (f) { setFile(f); setPreview(URL.createObjectURL(f)); }
   };
 
   const handlePost = async () => {
@@ -46,13 +40,14 @@ export default function Feed() {
       mediaType = file.type.startsWith("video") ? "video" : "image";
     }
 
+    // PUBLICAR CON DATOS DE USUARIO (Nombre + Foto)
     await addDoc(collection(db, "posts"), {
       text,
       mediaUrl,
       mediaType,
-      uid: user.uid,
-      userName: user.displayName || "Usuario",
-      userPhoto: user.photoURL || "", // <--- ESTO ES LO QUE TE FALTABA
+      userId: user.uid,
+      userName: user.displayName,
+      userPhoto: user.photoURL, // <--- ESTO ES CLAVE
       likes: [], 
       createdAt: serverTimestamp()
     });
@@ -71,72 +66,47 @@ export default function Feed() {
   };
 
   return (
-    <div style={{ maxWidth: "500px", margin: "auto", padding: "15px", backgroundColor: "#f0f2f5", minHeight: "100vh" }}>
+    <div style={{ maxWidth: "500px", margin: "auto", padding: "15px", backgroundColor: "#f0f2f5", minHeight: "100vh", fontFamily: "sans-serif" }}>
+      <h2 style={{ textAlign: "center", color: "#1c1e21" }}>AG Social</h2>
       
-      {/* Caja para Publicar */}
       {user && (
-        <div style={{ background: "#fff", padding: "15px", borderRadius: "15px", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", marginBottom: "20px" }}>
+        <div style={{ background: "#fff", padding: "15px", borderRadius: "12px", boxShadow: "0 2px 5px rgba(0,0,0,0.1)", marginBottom: "20px" }}>
           <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "10px" }}>
-            <img src={user.photoURL} width="40" height="40" style={{ borderRadius: "50%" }} />
-            <span style={{ fontWeight: "bold" }}>{user.displayName}</span>
+             <img src={user.photoURL} width="40" height="40" style={{ borderRadius: "50%" }} />
+             <span style={{ fontWeight: "bold" }}>{user.displayName}</span>
           </div>
           <textarea 
             value={text} 
             onChange={(e) => setText(e.target.value)} 
-            placeholder="¿Qué quieres compartir hoy?"
-            style={{ width: "100%", height: "80px", border: "none", outline: "none", fontSize: "16px", resize: "none" }}
+            placeholder="¿Qué estás pensando?"
+            style={{ width: "100%", height: "60px", border: "1px solid #ddd", borderRadius: "8px", padding: "10px", boxSizing: "border-box", resize: "none" }}
           />
-          {preview && (
-            <div style={{ position: "relative", marginBottom: "10px" }}>
-              {file?.type.startsWith("video") ? (
-                <video src={preview} width="100%" controls style={{ borderRadius: "10px" }} />
-              ) : (
-                <img src={preview} width="100%" style={{ borderRadius: "10px" }} />
-              )}
-            </div>
-          )}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #eee", paddingTop: "10px" }}>
-            <label style={{ cursor: "pointer", color: "#007bff", fontWeight: "bold" }}>
-              📁 Foto/Video
-              <input type="file" accept="image/*,video/*" onChange={handleFile} style={{ display: "none" }} />
-            </label>
-            <button onClick={handlePost} style={{ padding: "8px 20px", background: "#007bff", color: "white", border: "none", borderRadius: "20px", fontWeight: "bold" }}>
-              Publicar
-            </button>
-          </div>
+          <input type="file" accept="image/*,video/*" onChange={handleFile} style={{ marginTop: "10px" }} />
+          {preview && <img src={preview} width="100%" style={{ marginTop: "10px", borderRadius: "8px" }} />}
+          <button onClick={handlePost} style={{ width: "100%", marginTop: "10px", padding: "10px", background: "#007bff", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+            Publicar
+          </button>
         </div>
       )}
 
-      {/* Lista de Posts */}
       {posts.map(p => (
-        <div key={p.id} style={{ background: "#fff", padding: "15px", borderRadius: "15px", marginBottom: "15px", boxShadow: "0 1px 5px rgba(0,0,0,0.05)" }}>
+        <div key={p.id} style={{ background: "#fff", padding: "15px", borderRadius: "12px", marginTop: "15px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
           <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "10px" }}>
             <img src={p.userPhoto || "https://via.placeholder.com/40"} width="40" height="40" style={{ borderRadius: "50%" }} />
-            <span style={{ fontWeight: "bold" }}>{p.userName}</span>
+            <span style={{ fontWeight: "bold" }}>{p.userName || "Usuario"}</span>
           </div>
-          
-          <p style={{ fontSize: "16px", marginBottom: "10px", color: "#333" }}>{p.text}</p>
-          
+          <p style={{ fontSize: "16px", marginBottom: "10px" }}>{p.text}</p>
           {p.mediaUrl && (
-            p.mediaType === "video" ? (
-              <video src={p.mediaUrl} width="100%" controls style={{ borderRadius: "10px" }} />
-            ) : (
-              <img src={p.mediaUrl} width="100%" style={{ borderRadius: "10px" }} />
-            )
+            p.mediaType === "video" 
+            ? <video src={p.mediaUrl} width="100%" controls style={{ borderRadius: "8px" }} />
+            : <img src={p.mediaUrl} width="100%" style={{ borderRadius: "8px" }} />
           )}
-
-          <div style={{ marginTop: "10px", borderTop: "1px solid #f0f2f5", paddingTop: "10px" }}>
-            <button 
-              onClick={() => handleLike(p.id, p.likes)}
-              style={{ 
-                background: p.likes?.includes(user?.uid) ? "#e7f3ff" : "transparent", 
-                color: p.likes?.includes(user?.uid) ? "#007bff" : "#65676b", 
-                border: "none", padding: "8px 12px", borderRadius: "5px", fontWeight: "bold", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px"
-              }}
-            >
-              👍 {p.likes?.length || 0} Me gusta
-            </button>
-          </div>
+          <button 
+            onClick={() => handleLike(p.id, p.likes)}
+            style={{ marginTop: "10px", background: p.likes?.includes(user?.uid) ? "#007bff" : "#f0f2f5", color: p.likes?.includes(user?.uid) ? "white" : "#333", border: "none", padding: "8px 15px", borderRadius: "20px", fontWeight: "bold", cursor: "pointer" }}
+          >
+            👍 {p.likes?.length || 0}
+          </button>
         </div>
       ))}
     </div>
