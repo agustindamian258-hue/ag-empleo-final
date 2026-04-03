@@ -1,123 +1,109 @@
-import { useEffect, useState } from "react";
-import { db } from "../app/firebase";
+import { useState, useEffect } from "react";
+import { db, auth } from "../app/firebase";
 import { 
-  collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc 
+  collection, addDoc, query, orderBy, onSnapshot, 
+  doc, updateDoc, arrayUnion, arrayRemove, serverTimestamp 
 } from "firebase/firestore";
+import { onAuthStateChanged, User } from "firebase/auth";
+
+// 1. Definimos la estructura del Post para que no haya errores de TypeScript
+interface Post {
+  id: string;
+  text: string;
+  uid: string;
+  userName: string;
+  likes: string[];
+  createdAt: any;
+}
 
 export default function Feed() {
-  const [text, setText] = useState("");
-  const [posts, setPosts] = useState<any[]>([]);
-  
-  // 1. Estados para comentarios
-  const [commentText, setCommentText] = useState("");
-  const [comments, setComments] = useState<any[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [newPost, setNewPost] = useState("");
 
-  // 🔄 Leer Posts y Comentarios en tiempo real
+  // 2. Conexión con el usuario de Google
   useEffect(() => {
-    // Escuchar Posts
-    const qPosts = query(collection(db, "posts"), orderBy("createdAt", "desc"));
-    const unsubPosts = onSnapshot(qPosts, (snapshot) => {
-      const arr: any[] = [];
-      snapshot.forEach((docSnap) => {
-        arr.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setPosts(arr);
-    });
-
-    // PASO 4: Escuchar Comentarios
-    const unsubComments = onSnapshot(collection(db, "comments"), (snapshot) => {
-      const arr: any[] = [];
-      snapshot.forEach((docSnap) => {
-        arr.push(docSnap.data());
-      });
-      setComments(arr);
-    });
-
-    return () => {
-      unsubPosts();
-      unsubComments();
-    };
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    return () => unsub();
   }, []);
 
-  // ➕ Crear post
+  // 3. Traer los posts de la base de datos (En tiempo real)
+  useEffect(() => {
+    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Post));
+      setPosts(docs);
+    });
+    return () => unsub();
+  }, []);
+
+  // 4. Función para publicar (Lógica real)
   const handlePost = async () => {
-    if (!text) return;
+    if (!newPost.trim() || !user) return;
     await addDoc(collection(db, "posts"), {
-      text,
-      likes: 0,
-      createdAt: new Date(),
+      text: newPost,
+      uid: user.uid,
+      userName: user.displayName || "Usuario",
+      likes: [], 
+      createdAt: serverTimestamp()
     });
-    setText("");
+    setNewPost("");
   };
 
-  // ❤️ Función de Like
-  const handleLike = async (id: string, currentLikes: number) => {
-    const ref = doc(db, "posts", id);
-    await updateDoc(ref, {
-      likes: (currentLikes || 0) + 1,
-    });
-  };
-
-  // 💬 PASO 3: Función para comentar
-  const handleComment = async (postId: string) => {
-    if (!commentText) return;
-    await addDoc(collection(db, "comments"), {
-      postId,
-      text: commentText,
-      createdAt: new Date(),
-    });
-    setCommentText("");
+  // 5. Función de Likes (Sin duplicados y sin carpetas extras)
+  const handleLike = async (postId: string, likesArray: string[] = []) => {
+    if (!user) return alert("Iniciá sesión para dar like");
+    const postRef = doc(db, "posts", postId);
+    
+    if (likesArray.includes(user.uid)) {
+      // Si ya le diste like, lo saca
+      await updateDoc(postRef, { likes: arrayRemove(user.uid) });
+    } else {
+      // Si no le diste, lo agrega
+      await updateDoc(postRef, { likes: arrayUnion(user.uid) });
+    }
   };
 
   return (
-    <div style={{ padding: "20px", maxWidth: "500px", margin: "auto" }}>
-      <h2>Feed Social</h2>
+    <div style={{ maxWidth: "500px", margin: "0 auto", padding: "20px", fontFamily: 'sans-serif' }}>
+      <h2 style={{ textAlign: "center", marginBottom: "20px" }}>AG Social</h2>
 
-      {/* Crear post */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="¿Qué estás pensando?"
-          style={{ flex: 1, padding: "10px" }}
-        />
-        <button onClick={handlePost}>Publicar</button>
-      </div>
-
-      {/* Lista de posts */}
-      {posts.map((p) => (
-        <div key={p.id} style={{ border: "1px solid gray", marginBottom: "15px", padding: "15px", borderRadius: "10px" }}>
-          <p>{p.text}</p>
-          
-          {/* Botón Like */}
-          <button onClick={() => handleLike(p.id, p.likes)}>
-            👍 {p.likes || 0}
+      {/* Caja de publicación */}
+      {user && (
+        <div style={{ background: "#fff", padding: "15px", borderRadius: "12px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", marginBottom: "25px" }}>
+          <textarea 
+            value={newPost}
+            onChange={(e) => setNewPost(e.target.value)}
+            placeholder="¿Qué estás pensando?"
+            style={{ width: "100%", height: "80px", borderRadius: "8px", padding: "12px", border: "1px solid #ddd", resize: "none", fontSize: "16px", boxSizing: "border-box" }}
+          />
+          <button onClick={handlePost} style={{ width: "100%", marginTop: "10px", padding: "12px", background: "#007bff", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "16px" }}>
+            Publicar Ahora
           </button>
+        </div>
+      )}
 
-          <hr />
-
-          {/* PASO 5: Sección de comentarios */}
-          <div style={{ marginTop: "10px" }}>
-            {comments
-              .filter((c) => c.postId === p.id)
-              .map((c, i) => (
-                <p key={i} style={{ fontSize: "0.9rem", background: "#f0f0f0", padding: "5px", borderRadius: "5px" }}>
-                  💬 {c.text}
-                </p>
-            ))}
-
-            <div style={{ display: "flex", gap: "5px", marginTop: "10px" }}>
-              <input
-                placeholder="Comentar..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                style={{ flex: 1, padding: "5px" }}
-              />
-              <button onClick={() => handleComment(p.id)}>Enviar</button>
+      {/* Lista de posteos */}
+      <div>
+        {posts.map(p => (
+          <div key={p.id} style={{ background: "#fff", padding: "15px", borderRadius: "12px", marginBottom: "15px", border: "1px solid #eee" }}>
+            <p style={{ fontWeight: "bold", marginBottom: "8px", color: "#555" }}>👤 {p.userName}</p>
+            <p style={{ fontSize: "16px", color: "#222" }}>{p.text}</p>
+            <div style={{ marginTop: "15px", paddingTop: "10px", borderTop: "1px solid #f9f9f9" }}>
+                <button 
+                onClick={() => handleLike(p.id, p.likes)}
+                style={{ 
+                    background: p.likes?.includes(user?.uid || "") ? "#ff4d4d" : "#f0f2f5",
+                    color: p.likes?.includes(user?.uid || "") ? "white" : "#333",
+                    border: "none", padding: "10px 20px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold", fontSize: "14px"
+                }}
+                >
+                ❤️ {p.likes?.length || 0} Likes
+                </button>
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
