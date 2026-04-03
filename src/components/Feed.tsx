@@ -37,13 +37,12 @@ export default function Feed() {
   const handlePost = async () => {
     if (!user || (!text && !file)) return;
     let mediaUrl = "";
-    let mediaType = ""; // Guardamos si es imagen o video
+    let mediaType = "";
 
     if (file) {
       const sRef = ref(storage, `posts/${Date.now()}_${file.name}`);
       await uploadBytes(sRef, file);
       mediaUrl = await getDownloadURL(sRef);
-      // Detectamos el tipo de archivo
       mediaType = file.type.startsWith("video") ? "video" : "image";
     }
 
@@ -53,6 +52,7 @@ export default function Feed() {
       mediaType,
       uid: user.uid,
       userName: user.displayName || "Usuario",
+      userPhoto: user.photoURL || "", // <--- ESTO ES LO QUE TE FALTABA
       likes: [], 
       createdAt: serverTimestamp()
     });
@@ -71,59 +71,72 @@ export default function Feed() {
   };
 
   return (
-    <div style={{ maxWidth: "500px", margin: "auto", padding: "20px", fontFamily: "sans-serif" }}>
-      <h2 style={{ textAlign: "center" }}>AG Social</h2>
+    <div style={{ maxWidth: "500px", margin: "auto", padding: "15px", backgroundColor: "#f0f2f5", minHeight: "100vh" }}>
       
+      {/* Caja para Publicar */}
       {user && (
-        <div style={{ background: "#fff", padding: "15px", borderRadius: "12px", boxShadow: "0 2px 5px rgba(0,0,0,0.1)" }}>
+        <div style={{ background: "#fff", padding: "15px", borderRadius: "15px", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", marginBottom: "20px" }}>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "10px" }}>
+            <img src={user.photoURL} width="40" height="40" style={{ borderRadius: "50%" }} />
+            <span style={{ fontWeight: "bold" }}>{user.displayName}</span>
+          </div>
           <textarea 
             value={text} 
             onChange={(e) => setText(e.target.value)} 
-            placeholder="¿Qué estás pensando?"
-            style={{ width: "100%", height: "60px", border: "1px solid #ddd", borderRadius: "8px", padding: "10px", boxSizing: "border-box" }}
+            placeholder="¿Qué quieres compartir hoy?"
+            style={{ width: "100%", height: "80px", border: "none", outline: "none", fontSize: "16px", resize: "none" }}
           />
-          <input type="file" accept="image/*,video/*" onChange={handleFile} style={{ marginTop: "10px", width: "100%" }} />
-          
           {preview && (
-            <div style={{ marginTop: "10px" }}>
+            <div style={{ position: "relative", marginBottom: "10px" }}>
               {file?.type.startsWith("video") ? (
-                <video src={preview} width="100%" controls style={{ borderRadius: "8px" }} />
+                <video src={preview} width="100%" controls style={{ borderRadius: "10px" }} />
               ) : (
-                <img src={preview} width="100%" style={{ borderRadius: "8px" }} />
+                <img src={preview} width="100%" style={{ borderRadius: "10px" }} />
               )}
             </div>
           )}
-
-          <button onClick={handlePost} style={{ width: "100%", marginTop: "10px", padding: "12px", background: "#007bff", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
-            Publicar
-          </button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #eee", paddingTop: "10px" }}>
+            <label style={{ cursor: "pointer", color: "#007bff", fontWeight: "bold" }}>
+              📁 Foto/Video
+              <input type="file" accept="image/*,video/*" onChange={handleFile} style={{ display: "none" }} />
+            </label>
+            <button onClick={handlePost} style={{ padding: "8px 20px", background: "#007bff", color: "white", border: "none", borderRadius: "20px", fontWeight: "bold" }}>
+              Publicar
+            </button>
+          </div>
         </div>
       )}
 
+      {/* Lista de Posts */}
       {posts.map(p => (
-        <div key={p.id} style={{ background: "#fff", padding: "15px", borderRadius: "12px", marginTop: "15px", border: "1px solid #eee" }}>
-          <p style={{ fontWeight: "bold", color: "#555" }}>👤 {p.userName}</p>
-          <p style={{ fontSize: "16px", margin: "10px 0" }}>{p.text}</p>
+        <div key={p.id} style={{ background: "#fff", padding: "15px", borderRadius: "15px", marginBottom: "15px", boxShadow: "0 1px 5px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "10px" }}>
+            <img src={p.userPhoto || "https://via.placeholder.com/40"} width="40" height="40" style={{ borderRadius: "50%" }} />
+            <span style={{ fontWeight: "bold" }}>{p.userName}</span>
+          </div>
           
-          {/* Muestra imagen o video según lo que se subió */}
+          <p style={{ fontSize: "16px", marginBottom: "10px", color: "#333" }}>{p.text}</p>
+          
           {p.mediaUrl && (
             p.mediaType === "video" ? (
-              <video src={p.mediaUrl} width="100%" controls style={{ borderRadius: "8px", marginBottom: "10px" }} />
+              <video src={p.mediaUrl} width="100%" controls style={{ borderRadius: "10px" }} />
             ) : (
-              <img src={p.mediaUrl} width="100%" style={{ borderRadius: "8px", marginBottom: "10px" }} />
+              <img src={p.mediaUrl} width="100%" style={{ borderRadius: "10px" }} />
             )
           )}
 
-          <button 
-            onClick={() => handleLike(p.id, p.likes)}
-            style={{ 
-              background: p.likes?.includes(user?.uid) ? "#ff4d4d" : "#f0f2f5", 
-              color: p.likes?.includes(user?.uid) ? "white" : "#333", 
-              border: "none", padding: "8px 15px", borderRadius: "20px", fontWeight: "bold", cursor: "pointer" 
-            }}
-          >
-            ❤️ {p.likes?.length || 0}
-          </button>
+          <div style={{ marginTop: "10px", borderTop: "1px solid #f0f2f5", paddingTop: "10px" }}>
+            <button 
+              onClick={() => handleLike(p.id, p.likes)}
+              style={{ 
+                background: p.likes?.includes(user?.uid) ? "#e7f3ff" : "transparent", 
+                color: p.likes?.includes(user?.uid) ? "#007bff" : "#65676b", 
+                border: "none", padding: "8px 12px", borderRadius: "5px", fontWeight: "bold", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px"
+              }}
+            >
+              👍 {p.likes?.length || 0} Me gusta
+            </button>
+          </div>
         </div>
       ))}
     </div>
