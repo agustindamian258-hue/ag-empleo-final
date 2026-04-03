@@ -1,98 +1,58 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { auth } from "../app/firebase"; 
-import { onAuthStateChanged, signOut } from "firebase/auth"; 
+import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useTheme } from '../App'; // Importamos el switch de modo
+import { 
+  HomeIcon, 
+  BriefcaseIcon, 
+  PlusCircleIcon, 
+  BellIcon, 
+  UserIcon,
+  ArrowsRightLeftIcon 
+} from '@heroicons/react/24/outline';
 
-export default function Navbar() {
-  const [user, setUser] = useState(null);
+const Navbar: React.FC = () => {
+  const { isSocialMode, toggleMode } = useTheme();
   const navigate = useNavigate();
 
-  // Detector de estado de Firebase
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-    });
-    return () => unsub();
-  }, []);
-
-  // Función real para cerrar sesión
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      navigate("/login"); // Al cerrar sesión, lo mandamos al login
-    } catch (error) {
-      console.error("Error al cerrar sesión:", error);
-    }
+  const handleSwitch = () => {
+    toggleMode();
+    // Si pasamos a social, vamos al feed; si no, al home de empleo
+    navigate(isSocialMode ? "/" : "/social");
   };
 
   return (
-    <nav style={{ 
-      display: "flex", 
-      gap: "15px", 
-      padding: "10px 20px", 
-      background: "#ffffff", 
-      borderBottom: "2px solid #eee",
-      alignItems: "center",
-      fontFamily: "sans-serif"
-    }}>
-      {/* Secciones principales */}
-      <Link to="/" style={linkStyle}>Inicio</Link>
-      <Link to="/jobs" style={linkStyle}>Empleos</Link>
-      <Link to="/companies" style={linkStyle}>Empresas</Link>
-      <Link to="/cv" style={linkStyle}>Crear CV</Link>
-      <Link to="/social" style={linkStyle}>Social</Link>
+    <nav className={`fixed bottom-0 w-full border-t py-2 px-4 flex justify-between items-center bg-white z-50 ${isSocialMode ? 'border-purple-200' : 'border-blue-200'}`}>
+      
+      {/* Inicio */}
+      <Link to="/" className="flex flex-col items-center">
+        <HomeIcon className={`w-7 h-7 ${isSocialMode ? 'text-purple-600' : 'text-blue-600'}`} />
+      </Link>
 
-      <div style={{ marginLeft: "auto" }}>
-        {user ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-            {/* Link al Perfil con el nombre del usuario */}
-            <Link to="/profile" style={{ 
-              textDecoration: "none", 
-              fontWeight: "bold", 
-              color: "#333",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px"
-            }}>
-              👤 {user.displayName || "Mi Perfil"}
-            </Link>
+      {/* Búsqueda / Empleos */}
+      <Link to="/jobs" className="flex flex-col items-center">
+        <BriefcaseIcon className="w-7 h-7 text-gray-500" />
+      </Link>
 
-            {/* Botón de Cerrar Sesión Funcional */}
-            <button 
-              onClick={handleLogout}
-              style={{
-                padding: "6px 12px",
-                background: "#ff4d4d",
-                color: "white",
-                border: "none",
-                borderRadius: "5px",
-                cursor: "pointer",
-                fontWeight: "bold"
-              }}
-            >
-              Salir
-            </button>
-          </div>
-        ) : (
-          <Link to="/login" style={{ 
-            padding: "8px 20px", 
-            background: "#007bff", 
-            color: "white", 
-            borderRadius: "8px", 
-            textDecoration: "none",
-            fontWeight: "bold"
-          }}>
-            Ingresar
-          </Link>
-        )}
-      </div>
+      {/* PUBLICAR (Botón central resaltado) */}
+      <Link to={isSocialMode ? "/social" : "/jobs"} className="flex flex-col items-center">
+        <PlusCircleIcon className={`w-10 h-10 -mt-4 shadow-sm ${isSocialMode ? 'text-purple-500' : 'text-blue-500'}`} />
+      </Link>
+
+      {/* Notificaciones */}
+      <Link to="/notifications" className="flex flex-col items-center">
+        <BellIcon className="w-7 h-7 text-gray-500" />
+      </Link>
+
+      {/* Switcher de Interfaz (EL BOTÓN QUE CAMBIA TODO) */}
+      <button 
+        onClick={handleSwitch}
+        className={`p-2 rounded-full transition-all ${isSocialMode ? 'bg-purple-100' : 'bg-blue-100'}`}
+      >
+        <ArrowsRightLeftIcon className={`w-7 h-7 ${isSocialMode ? 'text-purple-700' : 'text-blue-700'}`} />
+      </button>
+
     </nav>
   );
-}
-
-// Estilo simple para los links
-const linkStyle = {
-  textDecoration: "none",
-  color: "#555",
-  fontWeight: "500"
 };
+
+export default Navbar;
