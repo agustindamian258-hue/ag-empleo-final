@@ -2,22 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Arreglo para que los iconos no exploten en pantalla */
-svg, img {
-  width: 24px; /* Tamaño estándar de icono */
-  height: 24px;
-  display: inline-block;
+/* REGLA DE ORO: Control total de iconos en móvil */
+svg {
+  display: block;
+  max-width: 100%;
 }
 
-/* Contenedor para que las secciones se vean como tarjetas (Cards) */
-.card-container {
-  background: white;
-  border-radius: 20px;
-  padding: 20px;
-  margin: 10px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+/* Mejora para los botones grandes que querés */
+.nav-center-button {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
 }
 
-/* Estilos para el modo Dual */
-.theme-social { background-color: #ffffff; }
-.theme-empleo { background-color: #f9fafb; }
+/* Estilos para el cambio de modo real y visual */
+.theme-social { background-color: #ffffff; min-height: 100vh; }
+.theme-empleo { background-color: #f8fafc; min-height: 100vh; }
