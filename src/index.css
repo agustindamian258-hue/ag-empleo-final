@@ -2,8 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: sans-serif;
-  background-color: #f3f4f6;
+/* Arreglo para que los iconos no exploten en pantalla */
+svg, img {
+  width: 24px; /* Tamaño estándar de icono */
+  height: 24px;
+  display: inline-block;
 }
+
+/* Contenedor para que las secciones se vean como tarjetas (Cards) */
+.card-container {
+  background: white;
+  border-radius: 20px;
+  padding: 20px;
+  margin: 10px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Estilos para el modo Dual */
+.theme-social { background-color: #ffffff; }
+.theme-empleo { background-color: #f9fafb; }
