@@ -6,6 +6,7 @@ import CVBuilder from "../pages/CVBuilder";
 import Feed from "../pages/Feed";
 import Login from "../pages/Login";
 import Profile from "../pages/Profile";
+import MapPage from "../pages/MapPage"; // 1. IMPORTAMOS LA NUEVA PÁGINA DEL MAPA
 
 export default function AppRoutes() {
   return (
@@ -15,10 +16,11 @@ export default function AppRoutes() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         
-        {/* AG Empleo: Portal de trabajo y CV */}
+        {/* AG Empleo: Portal de trabajo, CV y Mapa */}
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/companies" element={<Companies />} />
         <Route path="/cv" element={<CVBuilder />} />
+        <Route path="/mapa" element={<MapPage />} /> {/* 2. RUTA DEL MAPA AGREGADA */}
         
         {/* AG Social: Muro interactivo y Perfil de usuario */}
         <Route path="/social" element={<Feed />} />
