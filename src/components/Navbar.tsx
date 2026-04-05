@@ -1,59 +1,71 @@
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useTheme } from '../App'; 
-import { 
-  Bars3Icon, 
-  BriefcaseIcon, 
-  PlusCircleIcon, 
-  BellIcon, 
-  ArrowsRightLeftIcon 
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useTheme } from '../Aplicación';
+import {
+  Bars3Icon,
+  BriefcaseIcon,
+  PlusCircleIcon,
+  BellIcon,
+  ArrowsRightLeftIcon,
+  HomeIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavbarProps {
   onMenuClick?: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
+export default function Navbar({ onMenuClick }: NavbarProps) {
   const { isSocialMode, toggleMode } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSwitch = () => {
     toggleMode();
-    navigate(isSocialMode ? "/" : "/social");
+    navigate(isSocialMode ? '/' : '/social');
   };
 
+  const activo = (path: string) =>
+    location.pathname === path
+      ? isSocialMode ? 'text-purple-600' : 'text-blue-600'
+      : 'text-gray-400';
+
+  const color = isSocialMode ? 'text-purple-600' : 'text-blue-600';
+  const bg = isSocialMode ? 'bg-purple-100' : 'bg-blue-100';
+  const border = isSocialMode ? 'border-purple-100' : 'border-blue-100';
+
   return (
-    <nav className={`fixed bottom-0 left-0 right-0 w-full border-t py-3 px-6 flex justify-between items-center bg-white/90 backdrop-blur-md z-[100] ${isSocialMode ? 'border-purple-200' : 'border-blue-200 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]'}`}>
-      
-      {/* Menú lateral */}
-      <button onClick={onMenuClick} className="flex flex-col items-center active:scale-90 transition-transform">
-        <Bars3Icon className={`w-7 h-7 ${isSocialMode ? 'text-purple-600' : 'text-blue-600'}`} />
+    <nav className={`fixed bottom-0 left-0 right-0 w-full border-t ${border} py-3 px-5 flex justify-between items-center bg-white/95 backdrop-blur-md z-[100] shadow-[0_-2px_10px_rgba(0,0,0,0.06)]`}>
+
+      <button onClick={onMenuClick} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
+        <Bars3Icon className={`w-6 h-6 ${color}`} />
+        <span className="text-[9px] text-gray-400">Menú</span>
       </button>
 
-      {/* Empleos */}
-      <Link to="/jobs" className="flex flex-col items-center active:scale-90 transition-transform">
-        <BriefcaseIcon className="w-7 h-7 text-gray-500" />
+      <Link to="/" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
+        <HomeIcon className={`w-6 h-6 ${activo('/')}`} />
+        <span className="text-[9px] text-gray-400">Inicio</span>
       </Link>
 
-      {/* BOTÓN CENTRAL: PUBLICAR (Mejora visual de tamaño) */}
-      <Link to={isSocialMode ? "/social" : "/jobs"} className="relative flex flex-col items-center">
-        <div className="absolute -top-12 bg-white rounded-full p-1 shadow-lg">
-           <PlusCircleIcon className={`w-14 h-14 ${isSocialMode ? 'text-purple-500' : 'text-blue-500'}`} />
+      <Link to={isSocialMode ? '/social' : '/jobs'} className="relative flex flex-col items-center">
+        <div className={`absolute -top-10 ${isSocialMode ? 'bg-purple-600' : 'bg-blue-600'} rounded-full p-3 shadow-xl border-4 border-white`}>
+          <PlusCircleIcon className="w-8 h-8 text-white" />
         </div>
-        <span className="text-[9px] font-black text-gray-500 mt-6 uppercase tracking-tighter">Publicar</span>
+        <span className="text-[9px] text-gray-400 mt-6">Publicar</span>
       </Link>
 
-      {/* Notificaciones */}
-      <Link to="/notifications" className="flex flex-col items-center active:scale-90 transition-transform">
-        <BellIcon className="w-7 h-7 text-gray-500" />
+      <Link to="/notifications" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
+        <BellIcon className={`w-6 h-6 ${activo('/notifications')}`} />
+        <span className="text-[9px] text-gray-400">Alertas</span>
       </Link>
 
-      {/* SWITCHER (Cambio de mundo) */}
-      <button onClick={handleSwitch} className={`p-2 rounded-2xl transition-all active:rotate-180 duration-700 ${isSocialMode ? 'bg-purple-100' : 'bg-blue-100'}`}>
-        <ArrowsRightLeftIcon className={`w-7 h-7 ${isSocialMode ? 'text-purple-700' : 'text-blue-700'}`} />
+      <button
+        onClick={handleSwitch}
+        className={`flex flex-col items-center gap-0.5 p-2 rounded-2xl ${bg} active:scale-90 transition-all`}
+      >
+        <ArrowsRightLeftIcon className={`w-6 h-6 ${color}`} />
+        <span className={`text-[9px] font-bold ${color}`}>
+          {isSocialMode ? 'Empleo' : 'Social'}
+        </span>
       </button>
     </nav>
   );
-};
-
-export default Navbar;
+}
