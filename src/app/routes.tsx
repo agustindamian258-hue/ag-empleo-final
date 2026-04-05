@@ -1,33 +1,38 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Home from "../pages/Home";
-import Jobs from "../pages/Jobs";
-import Companies from "../pages/Companies";
-import CVBuilder from "../pages/CVBuilder";
-import Feed from "../pages/Feed";
-import Login from "../pages/Login";
-import Profile from "../pages/Profile";
-import MapPage from "../pages/MapPage"; // 1. IMPORTAMOS LA NUEVA PÁGINA DEL MAPA
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Home from '../pages/Inicio';
+import Jobs from '../pages/Empleos';
+import Companies from '../pages/Empresas';
+import CVBuilder from '../pages/CVBuilder';
+import Feed from '../pages/Feed';
+import Login from '../pages/IniciarSesion';
+import Profile from '../pages/Perfil';
+import MapPage from '../pages/PaginaDelMapa';
 
-export default function AppRoutes() {
+interface AppRoutesProps {
+  user: any;
+}
+
+export default function AppRoutes({ user }: AppRoutesProps) {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Lógica de navegación principal */}
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        
-        {/* AG Empleo: Portal de trabajo, CV y Mapa */}
-        <Route path="/jobs" element={<Jobs />} />
-        <Route path="/companies" element={<Companies />} />
-        <Route path="/cv" element={<CVBuilder />} />
-        <Route path="/mapa" element={<MapPage />} /> {/* 2. RUTA DEL MAPA AGREGADA */}
-        
-        {/* AG Social: Muro interactivo y Perfil de usuario */}
-        <Route path="/social" element={<Feed />} />
-        <Route path="/profile" element={<Profile />} />
+        {/* Si no hay usuario, siempre va al login */}
+        <Route
+          path="/login"
+          element={!user ? <Login /> : <Navigate to="/" />}
+        />
 
-        {/* Redirección automática si el usuario entra a una ruta que no existe */}
-        <Route path="*" element={<Navigate to="/" />} />
+        {/* Rutas protegidas: solo si hay usuario */}
+        <Route path="/" element={user ? <Home /> : <Navigate to="/login" />} />
+        <Route path="/jobs" element={user ? <Jobs /> : <Navigate to="/login" />} />
+        <Route path="/companies" element={user ? <Companies /> : <Navigate to="/login" />} />
+        <Route path="/cv" element={user ? <CVBuilder /> : <Navigate to="/login" />} />
+        <Route path="/mapa" element={user ? <MapPage /> : <Navigate to="/login" />} />
+        <Route path="/social" element={user ? <Feed /> : <Navigate to="/login" />} />
+        <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
+
+        {/* Cualquier ruta desconocida */}
+        <Route path="*" element={<Navigate to={user ? "/" : "/login"} />} />
       </Routes>
     </BrowserRouter>
   );
