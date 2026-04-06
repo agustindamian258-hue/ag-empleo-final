@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import AppRoutes from './app/rutas';
+import AppRoutes from './app/routes';
 import { auth } from './app/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
