@@ -1,6 +1,6 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../Aplicacion';
-import {
+
   Bars3Icon,
   BriefcaseIcon,
   PlusCircleIcon,
