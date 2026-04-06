@@ -99,7 +99,7 @@ export default function Companies() {
         {empresasFiltradas.map(empresa => (
           
             key={empresa.id}
-            href={empresa.website_url}
+            href={empresa.website_url || '#'}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-between bg-white border border-gray-100 rounded-2xl p-4 shadow-sm active:scale-95 transition-transform"
