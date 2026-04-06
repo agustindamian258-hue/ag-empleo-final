@@ -88,14 +88,3 @@ const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
           <button 
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 p-4 bg-red-500 text-white font-bold rounded-xl active:bg-red-600 transition-colors"
-          >
-            <ArrowLeftOnRectangleIcon className="w-6 h-6" />
-            CERRAR SESIÓN
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default Menu;
