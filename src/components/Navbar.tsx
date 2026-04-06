@@ -37,7 +37,7 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
 
       <button onClick={onMenuClick} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
         <Bars3Icon className={`w-6 h-6 ${color}`} />
-        <span className="text-[9px] text-gray-400">Menú</span>
+        <span className="text-[9px] text-gray-400">Menu</span>
       </button>
 
       <Link to="/" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
