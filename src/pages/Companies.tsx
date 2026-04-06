@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { db } from '../app/firebase';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import Navbar from '../components/Navbar';
-import menu from '../components/menu';
+import Menu from '../components/Menu';
 import { MagnifyingGlassIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
 
 interface Empresa {
