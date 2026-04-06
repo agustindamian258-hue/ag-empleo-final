@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import Navbar from '../components/Navbar';
-import Menu from '../components/Menú';
+import Menu from '../components/Menu';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
