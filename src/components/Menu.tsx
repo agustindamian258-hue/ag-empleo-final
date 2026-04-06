@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../app/firebase';
 import { signOut } from 'firebase/auth';
-import { 
+import Menu from '../components/Menu';
   BuildingOfficeIcon, 
   MapIcon, 
   DocumentTextIcon, 
