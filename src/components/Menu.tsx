@@ -2,12 +2,12 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../app/firebase';
 import { signOut } from 'firebase/auth';
-import { 
-  BuildingOfficeIcon, 
-  MapIcon, 
-  DocumentTextIcon, 
+import {
+  BuildingOfficeIcon,
+  MapIcon,
+  DocumentTextIcon,
   ArrowLeftOnRectangleIcon,
-  XMarkIcon 
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 interface menuProps {
@@ -35,7 +35,6 @@ const menu: React.FC<menuProps> = ({ isOpen, onClose }) => {
       
       <div className="w-4/5 h-full bg-white shadow-2xl flex flex-col animate-fade-left">
         
-        {/* HEADER */}
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-600 text-white">
           <div>
             <h2 className="text-xl font-bold">AG EMPLEO</h2>
@@ -46,7 +45,6 @@ const menu: React.FC<menuProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* CONTENIDO */}
         <div className="flex-grow p-4 space-y-3 overflow-y-auto">
           
           <button 
@@ -84,7 +82,6 @@ const menu: React.FC<menuProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* LOGOUT */}
         <div className="p-4 border-t border-gray-100">
           <button 
             onClick={handleLogout}
