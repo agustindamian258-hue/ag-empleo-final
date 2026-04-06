@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Navbar from '../components/Navbar';
 import Feed from '../components/Feed';
-import Menu from '../components/Menú';
+import Menu from '../components/Menu';
 import FloatingAI from '../components/FloatingAI';
 
 export default function Home() {
