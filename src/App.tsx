@@ -21,6 +21,7 @@ function App() {
   const [isSocialMode, setIsSocialMode] = useState(() => {
     return localStorage.getItem('ag_modo') === 'social';
   });
+
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -29,6 +30,7 @@ function App() {
       setUser(u);
       setLoading(false);
     });
+
     return () => unsub();
   }, []);
 
