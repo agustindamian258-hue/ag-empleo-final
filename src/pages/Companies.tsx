@@ -47,7 +47,6 @@ export default function Companies() {
         <p className="text-gray-400 text-xs">Directorio de empresas y comercios</p>
       </header>
 
-      {/* BUSCADOR */}
       <div className="px-4 pt-4">
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3">
           <MagnifyingGlassIcon className="w-5 h-5 text-gray-400" />
@@ -61,7 +60,6 @@ export default function Companies() {
         </div>
       </div>
 
-      {/* ABECEDARIO */}
       <div className="px-4 pt-4">
         <div className="flex flex-wrap gap-1.5">
           {LETRAS.map(l => (
@@ -80,7 +78,6 @@ export default function Companies() {
         </div>
       </div>
 
-      {/* LISTA DE EMPRESAS */}
       <div className="px-4 pt-5 space-y-3">
         {cargando && (
           <div className="flex justify-center py-10">
@@ -91,7 +88,10 @@ export default function Companies() {
         {!cargando && empresasFiltradas.length === 0 && (
           <div className="text-center py-12">
             <p className="text-4xl mb-3">🏢</p>
-            <p className="text-gray-500 font-medium">No hay empresas con la letra <span className="text-blue-600 font-black">{letraActiva}</span></p>
+            <p className="text-gray-500 font-medium">
+              No hay empresas con la letra{' '}
+              <span className="text-blue-600 font-black">{letraActiva}</span>
+            </p>
             <p className="text-gray-400 text-sm mt-1">Podés agregar empresas desde Firebase</p>
           </div>
         )}
