@@ -27,15 +27,15 @@ const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
 
   const goTo = (path: string) => {
     navigate(path);
-    onClose(); // Cierra el menú al navegar
+    onClose(); // Cierra el menu al navegar
   };
 
   return (
     <div className="fixed inset-0 z-[200] bg-black bg-opacity-50 flex justify-end">
-      {/* Contenedor del Menú Blanco */}
+      {/* Contenedor del Menu Blanco */}
       <div className="w-4/5 h-full bg-white shadow-2xl flex flex-col animate-fade-left">
         
-        {/* Header del Menú */}
+        {/* Header del Menu */}
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-600 text-white">
           <div>
             <h2 className="text-xl font-bold">AG EMPLEO</h2>
