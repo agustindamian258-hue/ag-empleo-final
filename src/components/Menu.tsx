@@ -1,8 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../app/firebase';
 import { signOut } from 'firebase/auth';
-import { useState, useEffect } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import {
   BuildingOfficeIcon,
@@ -56,30 +55,31 @@ const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
         className="w-4/5 h-full bg-white shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* HEADER CON DATOS DEL USUARIO */}
         <div className="p-5 bg-blue-600 text-white">
           <div className="flex justify-between items-start mb-4">
             <div>
               <h2 className="text-xl font-black tracking-tighter">AG EMPLEO</h2>
               <p className="text-xs opacity-75">Tu experiencia laboral</p>
             </div>
-            <button onClick={onClose} className="p-2 bg-white/20 rounded-full active:scale-90 transition-transform">
+            <button
+              onClick={onClose}
+              className="p-2 bg-white/20 rounded-full active:scale-90 transition-transform"
+            >
               <XMarkIcon className="w-5 h-5 text-white" />
             </button>
           </div>
           <div className="flex items-center gap-3">
             <img
-              src={userData?.photo || user?.photoURL || `https://ui-avatars.com/api/?name=${userData?.name || 'U'}`}
+              src={userData?.photo || user?.photoURL || 'https://ui-avatars.com/api/?name=U'}
               className="w-12 h-12 rounded-full border-2 border-white/50 object-cover"
             />
             <div>
               <p className="font-black text-sm">{userData?.name || user?.displayName || 'Usuario'}</p>
-              <p className="text-xs opacity-75">{userData?.title || 'Completá tu perfil'}</p>
+              <p className="text-xs opacity-75">{userData?.title || 'Completa tu perfil'}</p>
             </div>
           </div>
         </div>
 
-        {/* OPCIONES */}
         <div className="flex-grow p-4 space-y-2 overflow-y-auto">
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">Herramientas</p>
 
@@ -112,10 +112,54 @@ const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
             <DocumentTextIcon className="w-6 h-6 text-orange-600" />
             <div className="text-left">
               <p className="font-black text-orange-900 text-sm">Generador de CV</p>
-              <p className="text-xs text-orange-400">Creá tu currículum en PDF</p>
+              <p className="text-xs text-orange-400">Crea tu curriculum en PDF</p>
             </div>
           </button>
 
           <button
             onClick={() => goTo('/jobs')}
-            className="w-full flex items-center
+            className="w-full flex items-center gap-4 p-4 bg-purple-50 rounded-2xl active:scale-95 transition-all border border-purple-100"
+          >
+            <BriefcaseIcon className="w-6 h-6 text-purple-600" />
+            <div className="text-left">
+              <p className="font-black text-purple-900 text-sm">Empleos</p>
+              <p className="text-xs text-purple-400">Ofertas de trabajo</p>
+            </div>
+          </button>
+
+          <div className="pt-2">
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">Cuenta</p>
+
+            <button
+              onClick={() => goTo('/profile')}
+              className="w-full flex items-center gap-4 p-4 bg-gray-50 rounded-2xl active:scale-95 transition-all border border-gray-100"
+            >
+              <UserCircleIcon className="w-6 h-6 text-gray-500" />
+              <p className="font-bold text-gray-700 text-sm">Mi Perfil</p>
+            </button>
+
+            <button
+              onClick={() => goTo('/privacidad')}
+              className="w-full flex items-center gap-4 p-4 mt-2 bg-gray-50 rounded-2xl active:scale-95 transition-all border border-gray-100"
+            >
+              <ShieldCheckIcon className="w-6 h-6 text-gray-500" />
+              <p className="font-bold text-gray-700 text-sm">Politicas de privacidad</p>
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-gray-100">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 p-4 bg-red-500 text-white font-black rounded-2xl active:bg-red-600 transition-colors"
+          >
+            <ArrowLeftOnRectangleIcon className="w-5 h-5" />
+            Cerrar sesion
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Menu;
