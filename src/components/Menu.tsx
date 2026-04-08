@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../app/firebase';
 import { signOut } from 'firebase/auth';
@@ -14,37 +14,66 @@ import {
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
+interface UserData {
+  name?: string;
+  photo?: string;
+  title?: string;
+  email?: string;
+}
+
 interface MenuProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
+const Menu = ({ isOpen, onClose }: MenuProps) => {
   const navigate = useNavigate();
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [errorCarga, setErrorCarga] = useState<boolean>(false);
 
   useEffect(() => {
+    if (!isOpen) return;
+
     const user = auth.currentUser;
-    if (user) {
-      getDoc(doc(db, 'users', user.uid)).then(snap => {
-        if (snap.exists()) setUserData(snap.data());
-      });
-    }
+    if (!user) return;
+
+    const fetchUserData = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          setUserData(snap.data() as UserData);
+        }
+      } catch (e) {
+        console.error('[Menu] Error al cargar datos del usuario:', e);
+        setErrorCarga(true);
+      }
+    };
+
+    fetchUserData();
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    navigate('/login');
+  const user = auth.currentUser;
+
+  const handleLogout = async (): Promise<void> => {
+    try {
+      await signOut(auth);
+      navigate('/login');
+    } catch (e) {
+      console.error('[Menu] Error al cerrar sesión:', e);
+    }
   };
 
-  const goTo = (path: string) => {
+  const goTo = (path: string): void => {
     navigate(path);
     onClose();
   };
 
-  const user = auth.currentUser;
+  const avatarUrl =
+    userData?.photo ||
+    user?.photoURL ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(userData?.name || 'U')}&background=3b82f6&color=fff`;
 
   return (
     <div
@@ -55,6 +84,7 @@ const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
         className="w-4/5 h-full bg-white shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="p-5 bg-blue-600 text-white">
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -64,24 +94,36 @@ const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
             <button
               onClick={onClose}
               className="p-2 bg-white/20 rounded-full active:scale-90 transition-transform"
+              aria-label="Cerrar menú"
             >
               <XMarkIcon className="w-5 h-5 text-white" />
             </button>
           </div>
+
           <div className="flex items-center gap-3">
             <img
-              src={userData?.photo || user?.photoURL || 'https://ui-avatars.com/api/?name=U'}
+              src={avatarUrl}
+              alt={`Foto de ${userData?.name || 'usuario'}`}
               className="w-12 h-12 rounded-full border-2 border-white/50 object-cover"
             />
             <div>
-              <p className="font-black text-sm">{userData?.name || user?.displayName || 'Usuario'}</p>
-              <p className="text-xs opacity-75">{userData?.title || 'Completa tu perfil'}</p>
+              <p className="font-black text-sm">
+                {userData?.name || user?.displayName || 'Usuario'}
+              </p>
+              <p className="text-xs opacity-75">
+                {errorCarga
+                  ? 'Error al cargar perfil'
+                  : userData?.title || 'Completa tu perfil'}
+              </p>
             </div>
           </div>
         </div>
 
+        {/* Opciones */}
         <div className="flex-grow p-4 space-y-2 overflow-y-auto">
-          <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">Herramientas</p>
+          <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">
+            Herramientas
+          </p>
 
           <button
             onClick={() => goTo('/companies')}
@@ -127,8 +169,11 @@ const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
             </div>
           </button>
 
+          {/* Cuenta */}
           <div className="pt-2">
-            <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">Cuenta</p>
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">
+              Cuenta
+            </p>
 
             <button
               onClick={() => goTo('/profile')}
@@ -143,18 +188,21 @@ const Menu: React.FC<MenuProps> = ({ isOpen, onClose }) => {
               className="w-full flex items-center gap-4 p-4 mt-2 bg-gray-50 rounded-2xl active:scale-95 transition-all border border-gray-100"
             >
               <ShieldCheckIcon className="w-6 h-6 text-gray-500" />
-              <p className="font-bold text-gray-700 text-sm">Politicas de privacidad</p>
+              <p className="font-bold text-gray-700 text-sm">
+                Políticas de privacidad
+              </p>
             </button>
           </div>
         </div>
 
+        {/* Logout */}
         <div className="p-4 border-t border-gray-100">
           <button
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 p-4 bg-red-500 text-white font-black rounded-2xl active:bg-red-600 transition-colors"
           >
             <ArrowLeftOnRectangleIcon className="w-5 h-5" />
-            Cerrar sesion
+            Cerrar sesión
           </button>
         </div>
       </div>
