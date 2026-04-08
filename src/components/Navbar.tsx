@@ -1,6 +1,6 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useTheme } from '../Aplicacion';
-
+import { useTheme } from '../context/ThemeContext';
+import {
   Bars3Icon,
   BriefcaseIcon,
   PlusCircleIcon,
@@ -36,25 +36,24 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
 
   return (
     <nav className={`fixed bottom-0 left-0 right-0 w-full border-t ${border} py-3 px-5 flex justify-between items-center bg-white/95 backdrop-blur-md z-[100] shadow-[0_-2px_10px_rgba(0,0,0,0.06)]`}>
-
-      <button 
-        onClick={onMenuClick} 
+      <button
+        onClick={onMenuClick}
         className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
       >
         <Bars3Icon className={`w-6 h-6 ${color}`} />
         <span className="text-[9px] text-gray-400">menu</span>
       </button>
 
-      <Link 
-        to="/" 
+      <Link
+        to="/"
         className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
       >
         <HomeIcon className={`w-6 h-6 ${activo('/')}`} />
         <span className="text-[9px] text-gray-400">Inicio</span>
       </Link>
 
-      <Link 
-        to={isSocialMode ? '/social' : '/jobs'} 
+      <Link
+        to={isSocialMode ? '/social' : '/jobs'}
         className="relative flex flex-col items-center"
       >
         <div className={`absolute -top-10 ${isSocialMode ? 'bg-purple-600' : 'bg-blue-600'} rounded-full p-3 shadow-xl border-4 border-white`}>
@@ -63,8 +62,8 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
         <span className="text-[9px] text-gray-400 mt-6">Publicar</span>
       </Link>
 
-      <Link 
-        to="/notifications" 
+      <Link
+        to="/notifications"
         className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
       >
         <BellIcon className={`w-6 h-6 ${activo('/notifications')}`} />
@@ -82,4 +81,4 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
       </button>
     </nav>
   );
-}
+        }
