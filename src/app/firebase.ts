@@ -1,15 +1,31 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage"; 
+import { getStorage } from "firebase/storage";
+
+// Validación de variables de entorno en tiempo de arranque
+const requiredEnvVars = [
+  "VITE_FIREBASE_API_KEY",
+  "VITE_FIREBASE_AUTH_DOMAIN",
+  "VITE_FIREBASE_PROJECT_ID",
+  "VITE_FIREBASE_STORAGE_BUCKET",
+  "VITE_FIREBASE_MESSAGING_SENDER_ID",
+  "VITE_FIREBASE_APP_ID",
+] as const;
+
+for (const key of requiredEnvVars) {
+  if (!import.meta.env[key]) {
+    throw new Error(`Variable de entorno faltante: ${key}`);
+  }
+}
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBG0WZu-uyC1EOBk0-j2dCp8cRY3SCaiuA",
-  authDomain: "ag-empleo-final1.firebaseapp.com",
-  projectId: "ag-empleo-final1",
-  storageBucket: "ag-empleo-final1.firebasestorage.app",
-  messagingSenderId: "906358738062",
-  appId: "1:906358738062:web:b9afdb2c96f0b835418ddf",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
@@ -17,4 +33,4 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
-export const storage = getStorage(app); // Habilita el guardado de fotos y videos
+export const storage = getStorage(app);
