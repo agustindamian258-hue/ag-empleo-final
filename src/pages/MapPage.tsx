@@ -7,8 +7,8 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { XMarkIcon, MapPinIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
-// ─── Fix ícono Leaflet en React ───────────────────────────────────────────────
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+// ─── Fix ícono por defecto de Leaflet en entornos con bundler ─────────────────
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -18,12 +18,12 @@ L.Icon.Default.mergeOptions({
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Changa {
-  id: string;
-  titulo: string;
+  id:          string;
+  titulo:      string;
   descripcion?: string;
-  pago?: string;
-  urgencia: 'urgente' | 'semana' | 'mes';
-  posicion: [number, number];
+  pago?:        string;
+  urgencia:    'urgente' | 'semana' | 'mes';
+  posicion:    [number, number];
 }
 
 type Coordenada = [number, number];
@@ -31,7 +31,7 @@ type Coordenada = [number, number];
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const BUENOS_AIRES: Coordenada = [-34.6037, -58.3816];
-const GEO_TIMEOUT_MS = 10000;
+const GEO_TIMEOUT_MS = 10_000;
 
 const URGENCIA_ESTILOS: Record<string, string> = {
   urgente: 'text-red-600 bg-red-50 border-red-200',
@@ -40,43 +40,42 @@ const URGENCIA_ESTILOS: Record<string, string> = {
 };
 
 const FILTROS_URGENCIA = [
-  { id: 'urgente', label: 'Urgente',       clase: 'bg-red-100 text-red-700 border-red-200' },
-  { id: 'semana',  label: 'Esta semana',   clase: 'bg-orange-100 text-orange-700 border-orange-200' },
-  { id: 'mes',     label: 'Este mes',      clase: 'bg-blue-100 text-blue-700 border-blue-200' },
-];
+  { id: 'urgente', label: 'Urgente',     clase: 'bg-red-100 text-red-700 border-red-200'       },
+  { id: 'semana',  label: 'Esta semana', clase: 'bg-orange-100 text-orange-700 border-orange-200' },
+  { id: 'mes',     label: 'Este mes',    clase: 'bg-blue-100 text-blue-700 border-blue-200'     },
+] as const;
 
-// ─── Utilidades ───────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Calcula la distancia en km entre dos coordenadas usando la fórmula de Haversine.
+ * Distancia en km entre dos coordenadas — Fórmula de Haversine.
+ * Complejidad: O(1)
  */
 function calcularDistancia(a: Coordenada, b: Coordenada): number {
-  const R = 6371;
+  const R    = 6371;
   const dLat = ((b[0] - a[0]) * Math.PI) / 180;
   const dLon = ((b[1] - a[1]) * Math.PI) / 180;
-  const x =
+  const x    =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((a[0] * Math.PI) / 180) *
-      Math.cos((b[0] * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((b[0] * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
 /**
- * Verifica que una posición sea una coordenada válida.
+ * Type guard: verifica que pos sea una coordenada [lat, lng] válida.
  */
 function esCoordValida(pos: unknown): pos is Coordenada {
   return (
     Array.isArray(pos) &&
-    pos.length === 2 &&
-    typeof pos[0] === 'number' &&
-    typeof pos[1] === 'number' &&
-    !isNaN(pos[0]) &&
-    !isNaN(pos[1])
+    pos.length === 2   &&
+    typeof pos[0] === 'number' && !isNaN(pos[0]) &&
+    typeof pos[1] === 'number' && !isNaN(pos[1])
   );
 }
 
-// ─── Sub-componente: centrar mapa ─────────────────────────────────────────────
+// ─── Sub-componente: centra el mapa al cambiar la ubicación ──────────────────
 
 function CentrarMapa({ centro }: { centro: Coordenada }) {
   const map = useMap();
@@ -90,15 +89,16 @@ function CentrarMapa({ centro }: { centro: Coordenada }) {
 
 export default function MapPage() {
   const navigate = useNavigate();
-  const [distancia, setDistancia] = useState<number>(5);
-  const [changas, setChangas] = useState<Changa[]>([]);
-  const [urgenciaFiltro, setUrgenciaFiltro] = useState<string | null>(null);
-  const [userLoc, setUserLoc] = useState<Coordenada>(BUENOS_AIRES);
-  const [localizando, setLocalizando] = useState<boolean>(true);
-  const [errorGeo, setErrorGeo] = useState<string>('');
-  const [errorFirebase, setErrorFirebase] = useState<string>('');
 
-  // Obtener GPS del usuario con timeout
+  const [distancia,      setDistancia]      = useState<number>(5);
+  const [changas,        setChangas]        = useState<Changa[]>([]);
+  const [urgenciaFiltro, setUrgenciaFiltro] = useState<string | null>(null);
+  const [userLoc,        setUserLoc]        = useState<Coordenada>(BUENOS_AIRES);
+  const [localizando,    setLocalizando]    = useState<boolean>(true);
+  const [errorGeo,       setErrorGeo]       = useState<string>('');
+  const [errorFirebase,  setErrorFirebase]  = useState<string>('');
+
+  // Geolocalización del usuario con timeout configurable
   useEffect(() => {
     if (!navigator.geolocation) {
       setErrorGeo('Tu dispositivo no soporta geolocalización.');
@@ -120,14 +120,14 @@ export default function MapPage() {
     );
   }, []);
 
-  // Escuchar changas de Firebase
+  // Suscripción en tiempo real a changas
   useEffect(() => {
     const unsub = onSnapshot(
       collection(db, 'changas'),
       (snap) => {
         const datos = snap.docs
           .map((d) => ({ id: d.id, ...d.data() } as Changa))
-          .filter((c) => esCoordValida(c.posicion)); // Descartar coordenadas inválidas
+          .filter((c) => esCoordValida(c.posicion)); // Descarta coords inválidas
         setChangas(datos);
         setErrorFirebase('');
       },
@@ -139,17 +139,22 @@ export default function MapPage() {
     return () => unsub();
   }, []);
 
-  // Filtrar por radio y urgencia
+  /**
+   * Filtra changas por radio y urgencia.
+   * Complejidad: O(n) donde n = changas totales.
+   */
   const changasFiltradas = changas.filter((c) => {
-    const dist = calcularDistancia(userLoc, c.posicion);
-    const dentroDeRadio = dist <= distancia;
+    const dist          = calcularDistancia(userLoc, c.posicion);
+    const dentroRadio   = dist <= distancia;
     const cumpleUrgencia = !urgenciaFiltro || c.urgencia === urgenciaFiltro;
-    return dentroDeRadio && cumpleUrgencia;
+    return dentroRadio && cumpleUrgencia;
   });
 
   const toggleUrgencia = useCallback((id: string) => {
     setUrgenciaFiltro((prev) => (prev === id ? null : id));
   }, []);
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="fixed inset-0 z-[100] bg-white flex flex-col">
@@ -171,9 +176,12 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* Avisos de error no bloqueantes */}
+      {/* Avisos no bloqueantes */}
       {(errorGeo || errorFirebase) && (
-        <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-100 flex items-center gap-2 text-yellow-700 text-xs">
+        <div
+          className="px-4 py-2 bg-yellow-50 border-b border-yellow-100 flex items-center gap-2 text-yellow-700 text-xs"
+          role="alert"
+        >
           <ExclamationCircleIcon className="w-4 h-4 shrink-0" />
           {errorGeo || errorFirebase}
         </div>
@@ -190,15 +198,16 @@ export default function MapPage() {
           min="1"
           max="100"
           value={distancia}
-          onChange={(e) => setDistancia(parseInt(e.target.value))}
+          onChange={(e) => setDistancia(parseInt(e.target.value, 10))}
           className="w-full accent-blue-600"
-          aria-label="Radio de búsqueda en kilómetros"
+          aria-label={`Radio de búsqueda: ${distancia} kilómetros`}
         />
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="group" aria-label="Filtrar por urgencia">
           {FILTROS_URGENCIA.map((u) => (
             <button
               key={u.id}
               onClick={() => toggleUrgencia(u.id)}
+              aria-pressed={urgenciaFiltro === u.id}
               className={`flex-1 py-1.5 text-[10px] font-black rounded-full border transition-all ${
                 urgenciaFiltro === u.id
                   ? u.clase + ' ring-2 ring-offset-1 ring-blue-400'
@@ -214,11 +223,11 @@ export default function MapPage() {
       {/* Mapa */}
       <div className="flex-grow relative">
 
-        {/* Overlay de localización */}
+        {/* Overlay mientras se obtiene la ubicación */}
         {localizando && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
             <div className="flex flex-col items-center gap-2">
-              <MapPinIcon className="w-8 h-8 text-blue-600 animate-bounce" />
+              <MapPinIcon className="w-8 h-8 text-blue-600 animate-bounce" aria-hidden="true" />
               <p className="text-sm text-gray-500">Buscando tu ubicación...</p>
             </div>
           </div>
@@ -238,8 +247,8 @@ export default function MapPage() {
             center={userLoc}
             radius={distancia * 1000}
             pathOptions={{
-              color: '#3b82f6',
-              fillColor: '#3b82f6',
+              color:       '#3b82f6',
+              fillColor:   '#3b82f6',
               fillOpacity: 0.08,
             }}
           />
@@ -255,7 +264,9 @@ export default function MapPage() {
                     <p className="text-xs font-bold text-green-600 mt-1">{c.pago}</p>
                   )}
                   <span
-                    className={`inline-block mt-2 text-[10px] font-black px-2 py-0.5 rounded-full border ${URGENCIA_ESTILOS[c.urgencia] ?? ''}`}
+                    className={`inline-block mt-2 text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                      URGENCIA_ESTILOS[c.urgencia] ?? 'bg-gray-50 text-gray-500 border-gray-200'
+                    }`}
                   >
                     {c.urgencia?.toUpperCase()}
                   </span>
@@ -267,4 +278,4 @@ export default function MapPage() {
       </div>
     </div>
   );
-    }
+}
