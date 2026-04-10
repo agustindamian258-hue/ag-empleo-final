@@ -1,35 +1,71 @@
 import { useState, useEffect } from 'react';
 import { db } from '../app/firebase';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
+} from 'firebase/firestore';
 import Navbar from '../components/Navbar';
-import Menu from '../components/Menu';
+import Menu   from '../components/Menu';
 import {
   MagnifyingGlassIcon,
   ArrowTopRightOnSquareIcon,
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
 interface Empresa {
-  id: string;
-  nombre: string;
+  id:           string;
+  nombre:       string;
   website_url?: string;
-  categoria?: string;
+  categoria?:   string;
 }
+
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
 const LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Devuelve la inicial en mayúscula o '?' si el nombre es inválido. */
+function getInicial(nombre: string): string {
+  return nombre?.trim()?.[0]?.toUpperCase() || '?';
+}
+
+/**
+ * Sanitiza una URL para prevenir inyección de javascript: en href.
+ * Solo permite http/https.
+ */
+function sanitizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return url;
+    }
+  } catch {
+    // URL inválida
+  }
+  return '#';
+}
+
+// ─── Componente ───────────────────────────────────────────────────────────────
+
 export default function Companies() {
   const [letraActiva, setLetraActiva] = useState<string>('A');
-  const [empresas, setEmpresas] = useState<Empresa[]>([]);
-  const [cargando, setCargando] = useState<boolean>(false);
-  const [error, setError] = useState<string>('');
-  const [busqueda, setBusqueda] = useState<string>('');
-  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const [empresas,    setEmpresas]    = useState<Empresa[]>([]);
+  const [cargando,    setCargando]    = useState<boolean>(false);
+  const [error,       setError]       = useState<string>('');
+  const [busqueda,    setBusqueda]    = useState<string>('');
+  const [isMenuOpen,  setIsMenuOpen]  = useState<boolean>(false);
 
-  const modosBusqueda = busqueda.trim().length > 0;
+  const modoBusqueda = busqueda.trim().length > 0;
 
+  // Suscripción filtrada por letra activa (solo cuando no hay búsqueda de texto)
   useEffect(() => {
-    if (modosBusqueda) return;
+    if (modoBusqueda) return;
 
     setCargando(true);
     setError('');
@@ -37,7 +73,7 @@ export default function Companies() {
     const q = query(
       collection(db, 'empresas'),
       where('nombre', '>=', letraActiva),
-      where('nombre', '<', letraActiva + '\uf8ff'),
+      where('nombre', '<',  letraActiva + '\uf8ff'),
       orderBy('nombre')
     );
 
@@ -48,16 +84,42 @@ export default function Companies() {
         setCargando(false);
       },
       (err) => {
-        console.error('[Companies] Error:', err);
+        console.error('[Companies] Error al cargar empresas:', err);
         setError('No se pudieron cargar las empresas.');
         setCargando(false);
       }
     );
 
     return () => unsub();
-  }, [letraActiva, modosBusqueda]);
+  }, [letraActiva, modoBusqueda]);
 
-  const empresasMostradas = modosBusqueda
+  // Búsqueda global de texto — consulta todas las empresas
+  useEffect(() => {
+    if (!modoBusqueda) return;
+
+    setCargando(true);
+    setError('');
+
+    const q = query(collection(db, 'empresas'), orderBy('nombre'));
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setEmpresas(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Empresa)));
+        setCargando(false);
+      },
+      (err) => {
+        console.error('[Companies] Error en búsqueda global:', err);
+        setError('No se pudo realizar la búsqueda.');
+        setCargando(false);
+      }
+    );
+
+    return () => unsub();
+  }, [modoBusqueda]);
+
+  // Filtrado local por texto de búsqueda
+  const empresasMostradas = modoBusqueda
     ? empresas.filter((e) =>
         e.nombre.toLowerCase().includes(busqueda.toLowerCase().trim())
       )
@@ -68,21 +130,23 @@ export default function Companies() {
     setBusqueda('');
   };
 
-  const getInicial = (nombre: string): string => {
-    return nombre?.trim()?.[0]?.toUpperCase() || '?';
-  };
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+
+      {/* Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-gray-100 px-5 py-4 shadow-sm">
-        <h1 className="text-2xl font-black text-blue-800 tracking-tighter">
-          Empresas A-Z
-        </h1>
+        <h1 className="text-2xl font-black text-blue-800 tracking-tighter">Empresas A-Z</h1>
         <p className="text-gray-400 text-xs">
-          {cargando ? 'Cargando...' : `${empresasMostradas.length} empresas encontradas`}
+          {cargando
+            ? 'Cargando...'
+            : `${empresasMostradas.length} empresa${empresasMostradas.length !== 1 ? 's' : ''} encontrada${empresasMostradas.length !== 1 ? 's' : ''}`
+          }
         </p>
       </header>
 
+      {/* Buscador */}
       <div className="px-4 pt-4">
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3">
           <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 shrink-0" />
@@ -92,11 +156,12 @@ export default function Companies() {
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             className="flex-1 text-sm outline-none bg-transparent text-gray-700"
+            aria-label="Buscar empresa"
           />
           {busqueda && (
             <button
               onClick={() => setBusqueda('')}
-              className="text-gray-300 text-xs font-bold"
+              className="text-gray-400 text-xs font-bold px-1"
               aria-label="Limpiar búsqueda"
             >
               ✕
@@ -105,13 +170,16 @@ export default function Companies() {
         </div>
       </div>
 
-      {!modosBusqueda && (
+      {/* Selector de letra — solo visible fuera del modo búsqueda */}
+      {!modoBusqueda && (
         <div className="px-4 pt-4">
           <div className="flex flex-wrap gap-1.5">
             {LETRAS.map((l) => (
               <button
                 key={l}
                 onClick={() => handleLetra(l)}
+                aria-pressed={letraActiva === l}
+                aria-label={`Empresas con la letra ${l}`}
                 className={`w-9 h-9 rounded-xl text-sm font-black transition-all active:scale-90 ${
                   letraActiva === l
                     ? 'bg-blue-600 text-white shadow-md'
@@ -125,36 +193,50 @@ export default function Companies() {
         </div>
       )}
 
+      {/* Lista */}
       <div className="px-4 pt-5 space-y-3">
+
+        {/* Spinner */}
         {cargando && (
           <div className="flex justify-center py-10">
-            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" aria-label="Cargando" />
           </div>
         )}
 
+        {/* Error */}
         {error && (
-          <div className="flex items-center gap-2 p-4 bg-red-50 rounded-2xl text-red-600 text-sm" role="alert">
+          <div
+            className="flex items-center gap-2 p-4 bg-red-50 rounded-2xl text-red-600 text-sm"
+            role="alert"
+          >
             <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
             {error}
           </div>
         )}
 
+        {/* Estado vacío */}
         {!cargando && !error && empresasMostradas.length === 0 && (
           <div className="text-center py-12">
             <p className="text-4xl mb-3">🏢</p>
             <p className="text-gray-500 font-bold">
-              {modosBusqueda
+              {modoBusqueda
                 ? `Sin resultados para "${busqueda}"`
-                : `No hay empresas con la letra `}
-              {!modosBusqueda && (
-                <span className="text-blue-600 font-black">{letraActiva}</span>
-              )}
+                : (
+                  <>
+                    No hay empresas con la letra{' '}
+                    <span className="text-blue-600 font-black">{letraActiva}</span>
+                  </>
+                )
+              }
             </p>
           </div>
         )}
 
+        {/* Tarjetas de empresa */}
         {empresasMostradas.map((empresa) => {
-          const tieneWeb = Boolean(empresa.website_url);
+          const urlSegura = empresa.website_url ? sanitizeUrl(empresa.website_url) : '';
+          const tieneWeb  = Boolean(urlSegura && urlSegura !== '#');
+
           return (
             <div
               key={empresa.id}
@@ -176,9 +258,11 @@ export default function Companies() {
                   )}
                 </div>
               </div>
+
+              {/* ✅ BUG FIX: tag <a> completo y con URL sanitizada */}
               {tieneWeb && (
-                
-                  href={empresa.website_url}
+                <a
+                  href={urlSegura}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2 active:scale-95 transition-transform"
@@ -196,4 +280,4 @@ export default function Companies() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-    }
+}
