@@ -3,33 +3,35 @@ import { User, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../app/firebase';
 import Navbar from '../components/Navbar';
-import Menu from '../components/Menu';
+import Menu   from '../components/Menu';
 import {
-  UserCircleIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
 interface UserForm {
-  name: string;
-  title: string;
-  bio: string;
+  name:   string;
+  title:  string;
+  bio:    string;
   ciudad: string;
 }
 
 type StatusMsg = { tipo: 'exito' | 'error'; texto: string } | null;
 
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+const MAX_BIO_LENGTH = 300;
+
+// ─── Componente ───────────────────────────────────────────────────────────────
+
 export default function Profile() {
-  const [user, setUser] = useState<User | null>(null);
-  const [form, setForm] = useState<UserForm>({
-    name: '',
-    title: '',
-    bio: '',
-    ciudad: '',
-  });
-  const [fotoURL, setFotoURL] = useState<string>('');
-  const [guardando, setGuardando] = useState<boolean>(false);
-  const [status, setStatus] = useState<StatusMsg>(null);
+  const [user,        setUser]        = useState<User | null>(null);
+  const [form,        setForm]        = useState<UserForm>({ name: '', title: '', bio: '', ciudad: '' });
+  const [fotoURL,     setFotoURL]     = useState<string>('');
+  const [guardando,   setGuardando]   = useState<boolean>(false);
+  const [status,      setStatus]      = useState<StatusMsg>(null);
   const [menuAbierto, setMenuAbierto] = useState<boolean>(false);
 
   useEffect(() => {
@@ -44,20 +46,20 @@ export default function Profile() {
   }, []);
 
   /**
-   * Carga el perfil del usuario desde Firestore.
+   * Carga el perfil desde Firestore.
    */
   const loadProfile = async (uid: string): Promise<void> => {
     try {
       const snap = await getDoc(doc(db, 'users', uid));
       if (snap.exists()) {
-        const data = snap.data();
+        const d = snap.data();
         setForm({
-          name: data.name || '',
-          title: data.title || '',
-          bio: data.bio || '',
-          ciudad: data.ciudad || '',
+          name:   d.name   || '',
+          title:  d.title  || '',
+          bio:    d.bio    || '',
+          ciudad: d.ciudad || '',
         });
-        if (data.photo) setFotoURL(data.photo);
+        if (d.photo) setFotoURL(d.photo);
       }
     } catch (e) {
       console.error('[Profile] Error al cargar perfil:', e);
@@ -66,17 +68,36 @@ export default function Profile() {
   };
 
   /**
-   * Guarda los cambios del perfil en Firestore sin sobreescribir
-   * campos existentes como photo, createdAt o role.
+   * Valida los campos antes de guardar.
+   */
+  const validarForm = (): string | null => {
+    if (!form.name.trim())           return 'El nombre es obligatorio.';
+    if (form.bio.length > MAX_BIO_LENGTH) return `La bio no puede superar los ${MAX_BIO_LENGTH} caracteres.`;
+    return null;
+  };
+
+  /**
+   * Guarda solo los campos editables del perfil, sin sobreescribir
+   * photo, role ni createdAt.
    */
   const saveProfile = async (): Promise<void> => {
     if (!user) return;
+
+    const errValidacion = validarForm();
+    if (errValidacion) {
+      setStatus({ tipo: 'error', texto: errValidacion });
+      return;
+    }
+
     setGuardando(true);
     setStatus(null);
 
     try {
       await updateDoc(doc(db, 'users', user.uid), {
-        ...form,
+        name:      form.name.trim(),
+        title:     form.title.trim(),
+        bio:       form.bio.trim(),
+        ciudad:    form.ciudad.trim(),
         updatedAt: serverTimestamp(),
       });
       setStatus({ tipo: 'exito', texto: '¡Perfil guardado correctamente!' });
@@ -91,6 +112,8 @@ export default function Profile() {
   const avatarUrl =
     fotoURL ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=3b82f6&color=fff&size=128`;
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -107,12 +130,8 @@ export default function Profile() {
             className="w-24 h-24 rounded-full border-4 border-blue-100 object-cover shadow-md"
           />
           <div className="text-center">
-            <p className="font-black text-lg text-gray-900">
-              {form.name || 'Tu nombre'}
-            </p>
-            <p className="text-sm text-gray-500">
-              {form.title || 'Tu título profesional'}
-            </p>
+            <p className="font-black text-lg text-gray-900">{form.name || 'Tu nombre'}</p>
+            <p className="text-sm text-gray-500">{form.title || 'Tu título profesional'}</p>
           </div>
         </div>
 
@@ -120,59 +139,47 @@ export default function Profile() {
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5 space-y-4">
           <h2 className="font-black text-gray-800 text-base">Editar perfil</h2>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Nombre completo
-            </label>
-            <input
-              type="text"
-              placeholder="Ej: Juan Pérez"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
-          </div>
+          {[
+            { label: 'Nombre completo',    field: 'name'   as const, placeholder: 'Ej: Juan Pérez'        },
+            { label: 'Título profesional', field: 'title'  as const, placeholder: 'Ej: Desarrollador Web' },
+            { label: 'Ciudad',             field: 'ciudad' as const, placeholder: 'Ej: Buenos Aires'      },
+          ].map(({ label, field, placeholder }) => (
+            <div key={field} className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                {label}
+              </label>
+              <input
+                type="text"
+                placeholder={placeholder}
+                value={form[field]}
+                onChange={(e) => setForm({ ...form, [field]: e.target.value })}
+                className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+          ))}
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Título profesional
-            </label>
-            <input
-              type="text"
-              placeholder="Ej: Desarrollador Web"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Ciudad
-            </label>
-            <input
-              type="text"
-              placeholder="Ej: Buenos Aires"
-              value={form.ciudad}
-              onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
-              className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Bio / Descripción
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex justify-between">
+              <span>Bio / Descripción</span>
+              <span className={`normal-case font-normal ${form.bio.length >= MAX_BIO_LENGTH ? 'text-red-400' : 'text-gray-300'}`}>
+                {form.bio.length}/{MAX_BIO_LENGTH}
+              </span>
             </label>
             <textarea
               placeholder="Contá algo sobre vos..."
               value={form.bio}
-              onChange={(e) => setForm({ ...form, bio: e.target.value })}
+              onChange={(e) => {
+                if (e.target.value.length <= MAX_BIO_LENGTH) {
+                  setForm({ ...form, bio: e.target.value });
+                }
+              }}
               rows={4}
+              maxLength={MAX_BIO_LENGTH}
               className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
             />
           </div>
 
-          {/* Mensaje de estado */}
+          {/* Estado del guardado */}
           {status && (
             <div
               className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${
@@ -182,11 +189,10 @@ export default function Profile() {
               }`}
               role="alert"
             >
-              {status.tipo === 'exito' ? (
-                <CheckCircleIcon className="w-5 h-5 shrink-0" />
-              ) : (
-                <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
-              )}
+              {status.tipo === 'exito'
+                ? <CheckCircleIcon      className="w-5 h-5 shrink-0" />
+                : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
+              }
               {status.texto}
             </div>
           )}
@@ -200,22 +206,18 @@ export default function Profile() {
           </button>
         </div>
 
-        {/* Vista previa */}
+        {/* Vista previa de la tarjeta */}
         <div className="mt-4 bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
           <h2 className="font-black text-gray-800 text-base mb-3">Vista previa</h2>
           <div className="flex items-center gap-3">
             <img
               src={avatarUrl}
-              alt="Vista previa"
+              alt="Vista previa del perfil"
               className="w-14 h-14 rounded-full object-cover border-2 border-blue-100"
             />
             <div>
-              <p className="font-black text-gray-900 text-sm">
-                {form.name || 'Tu nombre'}
-              </p>
-              <p className="text-xs text-blue-600 font-bold">
-                {form.title || 'Tu título'}
-              </p>
+              <p className="font-black text-gray-900 text-sm">{form.name   || 'Tu nombre'}</p>
+              <p className="text-xs text-blue-600 font-bold">{form.title  || 'Tu título'}</p>
               <p className="text-xs text-gray-400">{form.ciudad}</p>
             </div>
           </div>
@@ -223,7 +225,6 @@ export default function Profile() {
             <p className="text-sm text-gray-600 mt-3 leading-relaxed">{form.bio}</p>
           )}
         </div>
-
       </div>
     </div>
   );
