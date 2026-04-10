@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { db } from '../app/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import Navbar from '../components/Navbar';
-import Menu from '../components/Menu';
+import Menu   from '../components/Menu';
 import {
   BriefcaseIcon,
   MapPinIcon,
@@ -13,15 +13,17 @@ import {
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
+type TipoEmpleo = 'full-time' | 'part-time' | 'changa' | 'remoto';
+
 interface Empleo {
-  id: string;
-  titulo: string;
-  empresa: string;
-  ubicacion: string;
-  salario?: string;
-  tipo: 'full-time' | 'part-time' | 'changa' | 'remoto' | string;
+  id:          string;
+  titulo:      string;
+  empresa:     string;
+  ubicacion:   string;
+  salario?:    string;
+  tipo:        TipoEmpleo | string;
   descripcion: string;
-  createdAt: { toDate: () => Date } | null;
+  createdAt:   { toDate: () => Date } | null;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -35,16 +37,27 @@ const BADGE_COLORS: Record<string, string> = {
   'changa':    'bg-orange-50 text-orange-700',
 };
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatFecha(createdAt: Empleo['createdAt']): string {
+  if (!createdAt?.toDate) return '';
+  return createdAt.toDate().toLocaleDateString('es-AR', {
+    day:   'numeric',
+    month: 'short',
+  });
+}
+
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function Jobs() {
-  const [empleos, setEmpleos] = useState<Empleo[]>([]);
-  const [cargando, setCargando] = useState<boolean>(true);
-  const [error, setError] = useState<string>('');
-  const [filtro, setFiltro] = useState<string>('todos');
-  const [busqueda, setBusqueda] = useState<string>('');
+  const [empleos,    setEmpleos]    = useState<Empleo[]>([]);
+  const [cargando,   setCargando]   = useState<boolean>(true);
+  const [error,      setError]      = useState<string>('');
+  const [filtro,     setFiltro]     = useState<string>('todos');
+  const [busqueda,   setBusqueda]   = useState<string>('');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
+  // Suscripción en tiempo real — O(n) por el sort de Firestore
   useEffect(() => {
     const q = query(collection(db, 'empleos'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(
@@ -63,25 +76,22 @@ export default function Jobs() {
     return () => unsub();
   }, []);
 
-  // Filtrado por tipo y búsqueda de texto
+  /**
+   * Filtrado por tipo y búsqueda de texto.
+   * Complejidad: O(n) donde n = cantidad de empleos.
+   */
   const empleosFiltrados = empleos.filter((e) => {
     const coincideTipo = filtro === 'todos' || e.tipo === filtro;
-    const textoBusqueda = busqueda.toLowerCase().trim();
-    const coincideBusqueda =
-      !textoBusqueda ||
-      e.titulo.toLowerCase().includes(textoBusqueda) ||
-      e.empresa.toLowerCase().includes(textoBusqueda) ||
-      e.ubicacion.toLowerCase().includes(textoBusqueda);
-    return coincideTipo && coincideBusqueda;
+    const termino      = busqueda.toLowerCase().trim();
+    const coincideTexto =
+      !termino ||
+      e.titulo.toLowerCase().includes(termino) ||
+      e.empresa.toLowerCase().includes(termino) ||
+      e.ubicacion.toLowerCase().includes(termino);
+    return coincideTipo && coincideTexto;
   });
 
-  const formatFecha = (createdAt: Empleo['createdAt']): string => {
-    if (!createdAt?.toDate) return '';
-    return createdAt.toDate().toLocaleDateString('es-AR', {
-      day: 'numeric',
-      month: 'short',
-    });
-  };
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -90,7 +100,10 @@ export default function Jobs() {
       <header className="sticky top-0 z-30 bg-white border-b border-gray-100 px-5 py-4 shadow-sm">
         <h1 className="text-2xl font-black text-blue-800 tracking-tighter">Empleos</h1>
         <p className="text-gray-400 text-xs">
-          {cargando ? 'Cargando...' : `${empleosFiltrados.length} ofertas disponibles`}
+          {cargando
+            ? 'Cargando...'
+            : `${empleosFiltrados.length} oferta${empleosFiltrados.length !== 1 ? 's' : ''} disponible${empleosFiltrados.length !== 1 ? 's' : ''}`
+          }
         </p>
       </header>
 
@@ -104,17 +117,19 @@ export default function Jobs() {
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Buscar por título, empresa o ciudad..."
             className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            aria-label="Buscar empleos"
           />
         </div>
       </div>
 
-      {/* Filtros */}
+      {/* Filtros por tipo */}
       <div className="px-4 pt-3 overflow-x-auto">
-        <div className="flex gap-2 pb-1">
+        <div className="flex gap-2 pb-1" role="group" aria-label="Filtrar por tipo de empleo">
           {TIPOS.map((t) => (
             <button
               key={t}
               onClick={() => setFiltro(t)}
+              aria-pressed={filtro === t}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-black transition-all active:scale-95 ${
                 filtro === t
                   ? 'bg-blue-600 text-white shadow-md'
@@ -133,13 +148,19 @@ export default function Jobs() {
         {/* Spinner */}
         {cargando && (
           <div className="flex justify-center py-10">
-            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <div
+              className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"
+              aria-label="Cargando empleos"
+            />
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="flex items-center gap-2 p-4 bg-red-50 rounded-2xl text-red-600 text-sm" role="alert">
+          <div
+            className="flex items-center gap-2 p-4 bg-red-50 rounded-2xl text-red-600 text-sm"
+            role="alert"
+          >
             <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
             {error}
           </div>
@@ -150,7 +171,9 @@ export default function Jobs() {
           <div className="text-center py-16">
             <p className="text-5xl mb-3">💼</p>
             <p className="text-gray-500 font-bold">
-              {busqueda ? `Sin resultados para "${busqueda}"` : 'No hay empleos disponibles'}
+              {busqueda
+                ? `Sin resultados para "${busqueda}"`
+                : 'No hay empleos disponibles'}
             </p>
             <p className="text-gray-400 text-sm mt-1">
               {busqueda ? 'Probá con otra búsqueda' : 'Volvé más tarde'}
@@ -158,9 +181,9 @@ export default function Jobs() {
           </div>
         )}
 
-        {/* Lista de empleos */}
+        {/* Tarjetas de empleos */}
         {empleosFiltrados.map((empleo) => (
-          <div
+          <article
             key={empleo.id}
             className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4"
           >
@@ -174,7 +197,11 @@ export default function Jobs() {
                   <p className="text-gray-500 text-xs">{empleo.empresa}</p>
                 </div>
               </div>
-              <span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${BADGE_COLORS[empleo.tipo] ?? 'bg-gray-50 text-gray-600'}`}>
+              <span
+                className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${
+                  BADGE_COLORS[empleo.tipo] ?? 'bg-gray-50 text-gray-600'
+                }`}
+              >
                 {empleo.tipo?.toUpperCase()}
               </span>
             </div>
@@ -202,7 +229,7 @@ export default function Jobs() {
                 </span>
               )}
             </div>
-          </div>
+          </article>
         ))}
       </div>
 
