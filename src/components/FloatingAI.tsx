@@ -6,35 +6,39 @@ import { doc, getDoc } from 'firebase/firestore';
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Mensaje {
-  id: string;
-  role: 'ai' | 'user';
+  id:      string;
+  role:    'ai' | 'user';
   content: string;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const MAX_HISTORIAL = 10; // Máximo de mensajes enviados a la API
-const MAX_INPUT = 300;
+const MAX_HISTORIAL = 10; // Mensajes enviados a la API (control de tokens)
+const MAX_INPUT     = 300;
 
+/**
+ * System prompt para el asistente de AG Empleo.
+ * Mantiene al modelo enfocado en el contexto laboral argentino.
+ */
 const SYSTEM_PROMPT = `Sos el asistente oficial de "AG Empleo", una app argentina de búsqueda de trabajo.
 Respondé siempre en español rioplatense, de forma amable y profesional.
 Conocés estas secciones: Mapa de Changas, Empresas A-Z y Generador de CV.
 Si te preguntan algo fuera del ámbito laboral, llevá la charla de vuelta al trabajo.
 Respondé de forma concisa, en no más de 3 oraciones cuando sea posible.`;
 
+const MENSAJE_INICIAL: Mensaje = {
+  id:      'init',
+  role:    'ai',
+  content: '¡Hola! Soy la IA de AG Empleo. ¿En qué te puedo ayudar hoy, che?',
+};
+
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function FloatingAI() {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [mensaje, setMensaje] = useState<string>('');
+  const [isOpen,   setIsOpen]   = useState<boolean>(false);
+  const [mensaje,  setMensaje]  = useState<string>('');
   const [cargando, setCargando] = useState<boolean>(false);
-  const [historial, setHistorial] = useState<Mensaje[]>([
-    {
-      id: 'init',
-      role: 'ai',
-      content: '¡Hola! Soy la IA de AG Empleo. ¿En qué te puedo ayudar hoy, che?',
-    },
-  ]);
+  const [historial, setHistorial] = useState<Mensaje[]>([MENSAJE_INICIAL]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll al último mensaje
@@ -42,10 +46,11 @@ export default function FloatingAI() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [historial]);
+  }, [historial, cargando]);
 
   /**
-   * Obtiene el contexto del perfil del usuario para personalizar las respuestas.
+   * Obtiene contexto del perfil para personalizar respuestas de la IA.
+   * Retorna string vacío si el usuario no está autenticado o hay un error.
    */
   const obtenerPerfilUsuario = async (): Promise<string> => {
     const user = auth.currentUser;
@@ -54,7 +59,10 @@ export default function FloatingAI() {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
         const d = snap.data();
-        return `El usuario se llama ${d.name ?? 'desconocido'}, vive en ${d.ciudad || 'Argentina'} y su descripción es: "${d.descripcion || 'sin descripción'}".`;
+        const nombre  = d.name      ?? 'desconocido';
+        const ciudad  = d.ciudad    || 'Argentina';
+        const desc    = d.descripcion || 'sin descripción';
+        return `El usuario se llama ${nombre}, vive en ${ciudad} y su descripción es: "${desc}".`;
       }
     } catch (e) {
       console.error('[FloatingAI] Error al obtener perfil:', e);
@@ -63,52 +71,58 @@ export default function FloatingAI() {
   };
 
   /**
-   * Envía el mensaje del usuario a la API de Claude y agrega la respuesta al historial.
+   * Envía el mensaje del usuario a la API de Anthropic y agrega la respuesta al historial.
+   * Limita el historial enviado a MAX_HISTORIAL para controlar el uso de tokens.
+   *
+   * NOTA DE SEGURIDAD: En producción, esta llamada debe pasar por un backend/proxy
+   * propio que gestione la API key. No exponer claves en el cliente.
    */
   const handleEnviar = async (): Promise<void> => {
-    if (!mensaje.trim() || cargando) return;
-
     const userMsg = mensaje.trim();
-    const userId = `user_${Date.now()}`;
+    if (!userMsg || cargando) return;
+
     setMensaje('');
     setCargando(true);
 
     const nuevoHistorial: Mensaje[] = [
       ...historial,
-      { id: userId, role: 'user', content: userMsg },
+      { id: `user_${Date.now()}`, role: 'user', content: userMsg },
     ];
     setHistorial(nuevoHistorial);
 
     try {
       const perfil = await obtenerPerfilUsuario();
 
-      // Limitar historial enviado a la API para no exceder tokens
+      // Recortar historial para no superar el límite de tokens de la API
       const historialRecortado = nuevoHistorial.slice(-MAX_HISTORIAL);
 
-      // Construir mensajes en formato correcto para la API
       const mensajesApi = historialRecortado.map((h) => ({
-        role: h.role === 'ai' ? 'assistant' : 'user',
+        role:    h.role === 'ai' ? 'assistant' : 'user',
         content: h.content,
       }));
+
+      const systemFinal = perfil
+        ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}`
+        : SYSTEM_PROMPT;
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model:      'claude-sonnet-4-20250514',
           max_tokens: 1000,
-          system: perfil ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}` : SYSTEM_PROMPT,
-          messages: mensajesApi,
+          system:     systemFinal,
+          messages:   mensajesApi,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(`API ${response.status}: ${errData?.error?.message ?? 'Error desconocido'}`);
       }
 
-      const data = await response.json();
-      const texto: string =
-        data.content?.[0]?.text?.trim() || '¿Me lo repetís? No entendí bien.';
+      const data   = await response.json();
+      const texto: string = data.content?.[0]?.text?.trim() || '¿Me lo repetís? No entendí bien.';
 
       setHistorial((prev) => [
         ...prev,
@@ -119,8 +133,8 @@ export default function FloatingAI() {
       setHistorial((prev) => [
         ...prev,
         {
-          id: `ai_err_${Date.now()}`,
-          role: 'ai',
+          id:      `ai_err_${Date.now()}`,
+          role:    'ai',
           content: 'Uh, se me cortó el cable. ¿Me lo repetís?',
         },
       ]);
@@ -170,6 +184,9 @@ export default function FloatingAI() {
           <div
             ref={scrollRef}
             className="flex-grow p-4 overflow-y-auto bg-gray-50 space-y-3"
+            role="log"
+            aria-live="polite"
+            aria-label="Conversación con el asistente"
           >
             {historial.map((chat) => (
               <div
@@ -190,7 +207,7 @@ export default function FloatingAI() {
 
             {/* Indicador de escritura */}
             {cargando && (
-              <div className="flex gap-1 p-3">
+              <div className="flex gap-1 p-3" aria-label="La IA está escribiendo">
                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0.15s]" />
                 <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:0.3s]" />
@@ -208,10 +225,17 @@ export default function FloatingAI() {
                   setMensaje(e.target.value);
                 }
               }}
-              onKeyDown={(e) => e.key === 'Enter' && handleEnviar()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleEnviar();
+                }
+              }}
               placeholder="Escribí tu mensaje..."
               className="flex-grow bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
               disabled={cargando}
+              maxLength={MAX_INPUT}
+              aria-label="Mensaje al asistente"
             />
             <button
               onClick={handleEnviar}
@@ -226,4 +250,4 @@ export default function FloatingAI() {
       )}
     </>
   );
-    }
+}
