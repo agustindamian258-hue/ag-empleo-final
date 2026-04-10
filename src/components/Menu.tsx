@@ -14,23 +14,28 @@ import {
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
 interface UserData {
-  name?: string;
+  name?:  string;
   photo?: string;
   title?: string;
   email?: string;
 }
 
 interface MenuProps {
-  isOpen: boolean;
+  isOpen:  boolean;
   onClose: () => void;
 }
 
-const Menu = ({ isOpen, onClose }: MenuProps) => {
+// ─── Componente ───────────────────────────────────────────────────────────────
+
+export default function Menu({ isOpen, onClose }: MenuProps) {
   const navigate = useNavigate();
-  const [userData, setUserData] = useState<UserData | null>(null);
+  const [userData,   setUserData]   = useState<UserData | null>(null);
   const [errorCarga, setErrorCarga] = useState<boolean>(false);
 
+  // Cargar datos del usuario cuando el menú se abre
   useEffect(() => {
     if (!isOpen) return;
 
@@ -56,6 +61,11 @@ const Menu = ({ isOpen, onClose }: MenuProps) => {
 
   const user = auth.currentUser;
 
+  const avatarUrl =
+    userData?.photo ||
+    user?.photoURL ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(userData?.name || user?.displayName || 'U')}&background=3b82f6&color=fff`;
+
   const handleLogout = async (): Promise<void> => {
     try {
       await signOut(auth);
@@ -70,21 +80,64 @@ const Menu = ({ isOpen, onClose }: MenuProps) => {
     onClose();
   };
 
-  const avatarUrl =
-    userData?.photo ||
-    user?.photoURL ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(userData?.name || 'U')}&background=3b82f6&color=fff`;
+  // ─── Opciones del menú ────────────────────────────────────────────────────
+
+  const herramientas = [
+    {
+      label:     'Empresas A-Z',
+      sub:       'Directorio de empresas',
+      path:      '/companies',
+      iconClass: 'text-blue-600',
+      bgClass:   'bg-blue-50 border-blue-100',
+      Icon:      BuildingOfficeIcon,
+      textClass: 'text-blue-900',
+      subClass:  'text-blue-400',
+    },
+    {
+      label:     'Mapa de Changas',
+      sub:       'Trabajos cerca tuyo',
+      path:      '/mapa',
+      iconClass: 'text-green-600',
+      bgClass:   'bg-green-50 border-green-100',
+      Icon:      MapIcon,
+      textClass: 'text-green-900',
+      subClass:  'text-green-400',
+    },
+    {
+      label:     'Generador de CV',
+      sub:       'Crea tu curriculum en PDF',
+      path:      '/cv',
+      iconClass: 'text-orange-600',
+      bgClass:   'bg-orange-50 border-orange-100',
+      Icon:      DocumentTextIcon,
+      textClass: 'text-orange-900',
+      subClass:  'text-orange-400',
+    },
+    {
+      label:     'Empleos',
+      sub:       'Ofertas de trabajo',
+      path:      '/jobs',
+      iconClass: 'text-purple-600',
+      bgClass:   'bg-purple-50 border-purple-100',
+      Icon:      BriefcaseIcon,
+      textClass: 'text-purple-900',
+      subClass:  'text-purple-400',
+    },
+  ] as const;
 
   return (
     <div
       className="fixed inset-0 z-[200] bg-black/50 flex justify-end"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Menú de navegación"
     >
       <div
         className="w-4/5 h-full bg-white shadow-2xl flex flex-col"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header con info del usuario */}
         <div className="p-5 bg-blue-600 text-white">
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -113,7 +166,7 @@ const Menu = ({ isOpen, onClose }: MenuProps) => {
               <p className="text-xs opacity-75">
                 {errorCarga
                   ? 'Error al cargar perfil'
-                  : userData?.title || 'Completa tu perfil'}
+                  : userData?.title || 'Completá tu perfil'}
               </p>
             </div>
           </div>
@@ -125,51 +178,21 @@ const Menu = ({ isOpen, onClose }: MenuProps) => {
             Herramientas
           </p>
 
-          <button
-            onClick={() => goTo('/companies')}
-            className="w-full flex items-center gap-4 p-4 bg-blue-50 rounded-2xl active:scale-95 transition-all border border-blue-100"
-          >
-            <BuildingOfficeIcon className="w-6 h-6 text-blue-600" />
-            <div className="text-left">
-              <p className="font-black text-blue-900 text-sm">Empresas A-Z</p>
-              <p className="text-xs text-blue-400">Directorio de empresas</p>
-            </div>
-          </button>
+          {herramientas.map(({ label, sub, path, iconClass, bgClass, Icon, textClass, subClass }) => (
+            <button
+              key={path}
+              onClick={() => goTo(path)}
+              className={`w-full flex items-center gap-4 p-4 rounded-2xl active:scale-95 transition-all border ${bgClass}`}
+            >
+              <Icon className={`w-6 h-6 ${iconClass}`} />
+              <div className="text-left">
+                <p className={`font-black text-sm ${textClass}`}>{label}</p>
+                <p className={`text-xs ${subClass}`}>{sub}</p>
+              </div>
+            </button>
+          ))}
 
-          <button
-            onClick={() => goTo('/mapa')}
-            className="w-full flex items-center gap-4 p-4 bg-green-50 rounded-2xl active:scale-95 transition-all border border-green-100"
-          >
-            <MapIcon className="w-6 h-6 text-green-600" />
-            <div className="text-left">
-              <p className="font-black text-green-900 text-sm">Mapa de Changas</p>
-              <p className="text-xs text-green-400">Trabajos cerca tuyo</p>
-            </div>
-          </button>
-
-          <button
-            onClick={() => goTo('/cv')}
-            className="w-full flex items-center gap-4 p-4 bg-orange-50 rounded-2xl active:scale-95 transition-all border border-orange-100"
-          >
-            <DocumentTextIcon className="w-6 h-6 text-orange-600" />
-            <div className="text-left">
-              <p className="font-black text-orange-900 text-sm">Generador de CV</p>
-              <p className="text-xs text-orange-400">Crea tu curriculum en PDF</p>
-            </div>
-          </button>
-
-          <button
-            onClick={() => goTo('/jobs')}
-            className="w-full flex items-center gap-4 p-4 bg-purple-50 rounded-2xl active:scale-95 transition-all border border-purple-100"
-          >
-            <BriefcaseIcon className="w-6 h-6 text-purple-600" />
-            <div className="text-left">
-              <p className="font-black text-purple-900 text-sm">Empleos</p>
-              <p className="text-xs text-purple-400">Ofertas de trabajo</p>
-            </div>
-          </button>
-
-          {/* Cuenta */}
+          {/* Sección Cuenta */}
           <div className="pt-2">
             <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">
               Cuenta
@@ -188,9 +211,7 @@ const Menu = ({ isOpen, onClose }: MenuProps) => {
               className="w-full flex items-center gap-4 p-4 mt-2 bg-gray-50 rounded-2xl active:scale-95 transition-all border border-gray-100"
             >
               <ShieldCheckIcon className="w-6 h-6 text-gray-500" />
-              <p className="font-bold text-gray-700 text-sm">
-                Políticas de privacidad
-              </p>
+              <p className="font-bold text-gray-700 text-sm">Políticas de privacidad</p>
             </button>
           </div>
         </div>
@@ -208,6 +229,4 @@ const Menu = ({ isOpen, onClose }: MenuProps) => {
       </div>
     </div>
   );
-};
-
-export default Menu;
+}
