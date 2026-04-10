@@ -1,10 +1,8 @@
-import { useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { useEffect, useState } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './app/firebase';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import AppRoutes from './app/rutas';
-
-// ─── Spinner de carga global ──────────────────────────────────────────────────
 
 function LoadingScreen() {
   return (
@@ -17,21 +15,19 @@ function LoadingScreen() {
   );
 }
 
-// ─── AppContent: accede al contexto ya provisto ───────────────────────────────
-
 function AppContent() {
-  const { isSocialMode, user, setUser } = useTheme();
+  const { isSocialMode, setUser } = useTheme();
+  // undefined = cargando, null = no autenticado, User = autenticado
+  const [user, setLocalUser] = useState<User | null | undefined>(undefined);
 
-  // Suscripción al estado de autenticación de Firebase
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
+      setLocalUser(u);
       setUser(u);
     });
     return () => unsub();
   }, [setUser]);
 
-  // Mientras Firebase resuelve el estado inicial, mostramos loading
-  // user === undefined significa "aún no resuelto"; null = no autenticado
   if (user === undefined) return <LoadingScreen />;
 
   return (
@@ -40,8 +36,6 @@ function AppContent() {
     </div>
   );
 }
-
-// ─── App: provee contexto global ──────────────────────────────────────────────
 
 export default function App() {
   return (
