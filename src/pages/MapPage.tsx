@@ -7,7 +7,6 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { XMarkIcon, MapPinIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
-// ─── Fix ícono por defecto de Leaflet en entornos con bundler ─────────────────
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -15,20 +14,16 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
 interface Changa {
-  id:          string;
-  titulo:      string;
+  id:           string;
+  titulo:       string;
   descripcion?: string;
   pago?:        string;
-  urgencia:    'urgente' | 'semana' | 'mes';
-  posicion:    [number, number];
+  urgencia:     'urgente' | 'semana' | 'mes';
+  posicion:     [number, number];
 }
 
 type Coordenada = [number, number];
-
-// ─── Constantes ───────────────────────────────────────────────────────────────
 
 const BUENOS_AIRES: Coordenada = [-34.6037, -58.3816];
 const GEO_TIMEOUT_MS = 10_000;
@@ -40,17 +35,11 @@ const URGENCIA_ESTILOS: Record<string, string> = {
 };
 
 const FILTROS_URGENCIA = [
-  { id: 'urgente', label: 'Urgente',     clase: 'bg-red-100 text-red-700 border-red-200'       },
+  { id: 'urgente', label: 'Urgente',     clase: 'bg-red-100 text-red-700 border-red-200'          },
   { id: 'semana',  label: 'Esta semana', clase: 'bg-orange-100 text-orange-700 border-orange-200' },
-  { id: 'mes',     label: 'Este mes',    clase: 'bg-blue-100 text-blue-700 border-blue-200'     },
+  { id: 'mes',     label: 'Este mes',    clase: 'bg-blue-100 text-blue-700 border-blue-200'        },
 ] as const;
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Distancia en km entre dos coordenadas — Fórmula de Haversine.
- * Complejidad: O(1)
- */
 function calcularDistancia(a: Coordenada, b: Coordenada): number {
   const R    = 6371;
   const dLat = ((b[0] - a[0]) * Math.PI) / 180;
@@ -63,9 +52,6 @@ function calcularDistancia(a: Coordenada, b: Coordenada): number {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-/**
- * Type guard: verifica que pos sea una coordenada [lat, lng] válida.
- */
 function esCoordValida(pos: unknown): pos is Coordenada {
   return (
     Array.isArray(pos) &&
@@ -75,8 +61,6 @@ function esCoordValida(pos: unknown): pos is Coordenada {
   );
 }
 
-// ─── Sub-componente: centra el mapa al cambiar la ubicación ──────────────────
-
 function CentrarMapa({ centro }: { centro: Coordenada }) {
   const map = useMap();
   useEffect(() => {
@@ -84,8 +68,6 @@ function CentrarMapa({ centro }: { centro: Coordenada }) {
   }, [map, centro]);
   return null;
 }
-
-// ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function MapPage() {
   const navigate = useNavigate();
@@ -98,14 +80,12 @@ export default function MapPage() {
   const [errorGeo,       setErrorGeo]       = useState<string>('');
   const [errorFirebase,  setErrorFirebase]  = useState<string>('');
 
-  // Geolocalización del usuario con timeout configurable
   useEffect(() => {
     if (!navigator.geolocation) {
       setErrorGeo('Tu dispositivo no soporta geolocalización.');
       setLocalizando(false);
       return;
     }
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserLoc([pos.coords.latitude, pos.coords.longitude]);
@@ -120,14 +100,13 @@ export default function MapPage() {
     );
   }, []);
 
-  // Suscripción en tiempo real a changas
   useEffect(() => {
     const unsub = onSnapshot(
       collection(db, 'changas'),
       (snap) => {
         const datos = snap.docs
           .map((d) => ({ id: d.id, ...d.data() } as Changa))
-          .filter((c) => esCoordValida(c.posicion)); // Descarta coords inválidas
+          .filter((c) => esCoordValida(c.posicion));
         setChangas(datos);
         setErrorFirebase('');
       },
@@ -139,13 +118,9 @@ export default function MapPage() {
     return () => unsub();
   }, []);
 
-  /**
-   * Filtra changas por radio y urgencia.
-   * Complejidad: O(n) donde n = changas totales.
-   */
   const changasFiltradas = changas.filter((c) => {
-    const dist          = calcularDistancia(userLoc, c.posicion);
-    const dentroRadio   = dist <= distancia;
+    const dist           = calcularDistancia(userLoc, c.posicion);
+    const dentroRadio    = dist <= distancia;
     const cumpleUrgencia = !urgenciaFiltro || c.urgencia === urgenciaFiltro;
     return dentroRadio && cumpleUrgencia;
   });
@@ -154,12 +129,9 @@ export default function MapPage() {
     setUrgenciaFiltro((prev) => (prev === id ? null : id));
   }, []);
 
-  // ─── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="fixed inset-0 z-[100] bg-white flex flex-col">
 
-      {/* Header */}
       <div className="p-4 flex justify-between items-center bg-white border-b border-gray-100 shadow-sm">
         <div>
           <h2 className="font-black text-xl text-blue-900">Mapa de Changas</h2>
@@ -176,7 +148,6 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* Avisos no bloqueantes */}
       {(errorGeo || errorFirebase) && (
         <div
           className="px-4 py-2 bg-yellow-50 border-b border-yellow-100 flex items-center gap-2 text-yellow-700 text-xs"
@@ -187,7 +158,6 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Filtros */}
       <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 space-y-3">
         <div className="flex justify-between items-center">
           <span className="text-sm font-bold text-gray-600">Radio de búsqueda</span>
@@ -220,10 +190,7 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* Mapa */}
       <div className="flex-grow relative">
-
-        {/* Overlay mientras se obtiene la ubicación */}
         {localizando && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
             <div className="flex flex-col items-center gap-2">
@@ -238,9 +205,10 @@ export default function MapPage() {
           zoom={13}
           style={{ height: '100%', width: '100%' }}
         >
+          {/* ✅ CARTO tiles — sin restricciones de referer */}
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
           />
           <CentrarMapa centro={userLoc} />
           <Circle
