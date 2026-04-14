@@ -1,27 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
-  collection,
-  addDoc,
-  query,
-  orderBy,
-  onSnapshot,
-  doc,
-  updateDoc,
-  arrayUnion,
-  arrayRemove,
-  serverTimestamp,
+  collection, addDoc, query, orderBy, onSnapshot,
+  doc, updateDoc, arrayUnion, arrayRemove, serverTimestamp,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
-  HeartIcon,
-  PhotoIcon,
-  PaperAirplaneIcon,
-  ExclamationCircleIcon,
+  HeartIcon, PhotoIcon, PaperAirplaneIcon, ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Post {
   id:        string;
@@ -35,39 +22,27 @@ interface Post {
   createdAt: { toDate: () => Date } | null;
 }
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
+interface FeedProps {
+  showCompose?: boolean;
+  onPublished?: () => void;
+}
 
-const MAX_FILE_SIZE_MB  = 50;
-const MAX_TEXT_LENGTH   = 500;
-const ALLOWED_TYPES     = ['image/', 'video/'];
+const MAX_FILE_SIZE_MB = 50;
+const MAX_TEXT_LENGTH  = 500;
+const ALLOWED_TYPES    = ['image/', 'video/'];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Sanitiza texto para prevenir XSS básico al renderizar en el DOM.
- * Dado que usamos React (que ya escapa por defecto), esta capa es
- * una defensa adicional para cuando se persista en Firestore.
- */
 function sanitizeText(input: string): string {
-  return input
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .trim();
+  return input.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
 }
 
 function formatFecha(createdAt: Post['createdAt']): string {
   if (!createdAt?.toDate) return 'Ahora';
   return createdAt.toDate().toLocaleDateString('es-AR', {
-    day:    'numeric',
-    month:  'short',
-    hour:   '2-digit',
-    minute: '2-digit',
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   });
 }
 
-// ─── Componente ───────────────────────────────────────────────────────────────
-
-export default function Feed() {
+export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const user = auth.currentUser;
 
   const [posts,      setPosts]      = useState<Post[]>([]);
@@ -76,103 +51,61 @@ export default function Feed() {
   const [preview,    setPreview]    = useState<string | null>(null);
   const [publicando, setPublicando] = useState<boolean>(false);
   const [error,      setError]      = useState<string>('');
-
-  // Ref para revocar URL de preview y evitar memory leaks
   const previewUrlRef = useRef<string | null>(null);
 
-  // Suscripción en tiempo real a los posts — O(n log n) por el orderBy de Firestore
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post)));
-      },
-      (err) => {
-        console.error('[Feed] Error en onSnapshot:', err);
-        setError('No se pudieron cargar las publicaciones.');
-      }
+    const unsub = onSnapshot(q,
+      (snap) => setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post))),
+      (err)  => { console.error('[Feed]', err); setError('No se pudieron cargar las publicaciones.'); }
     );
     return () => unsub();
   }, []);
 
-  // Revocar Object URL al desmontar
   useEffect(() => {
-    return () => {
-      if (previewUrlRef.current) {
-        URL.revokeObjectURL(previewUrlRef.current);
-      }
-    };
+    return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); };
   }, []);
 
-  /**
-   * Maneja selección de archivo con validación de tipo y tamaño.
-   */
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>): void => {
     setError('');
     const f = e.target.files?.[0];
     if (!f) return;
-
-    // Validar tipo MIME
-    const tipoPermitido = ALLOWED_TYPES.some((t) => f.type.startsWith(t));
-    if (!tipoPermitido) {
-      setError('Solo se permiten imágenes y videos.');
-      return;
+    if (!ALLOWED_TYPES.some((t) => f.type.startsWith(t))) {
+      setError('Solo se permiten imágenes y videos.'); return;
     }
-
-    // Validar tamaño
     if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      setError(`El archivo no puede superar los ${MAX_FILE_SIZE_MB}MB.`);
-      return;
+      setError(`El archivo no puede superar los ${MAX_FILE_SIZE_MB}MB.`); return;
     }
-
-    // Revocar URL anterior
-    if (previewUrlRef.current) {
-      URL.revokeObjectURL(previewUrlRef.current);
-    }
-
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     const url = URL.createObjectURL(f);
     previewUrlRef.current = url;
     setFile(f);
     setPreview(url);
   };
 
-  /**
-   * Publica un nuevo post con texto y/o archivo.
-   * El texto se sanitiza antes de persistir en Firestore.
-   */
   const handlePost = async (): Promise<void> => {
     if (!user) return;
-
     const textSanitizado = sanitizeText(text);
     if (!textSanitizado && !file) return;
-
     setPublicando(true);
     setError('');
-
     try {
       let mediaUrl  = '';
       let mediaType: 'image' | 'video' | '' = '';
-
       if (file) {
         const sRef = storageRef(storage, `posts/${Date.now()}_${file.name}`);
         await uploadBytes(sRef, file);
         mediaUrl  = await getDownloadURL(sRef);
         mediaType = file.type.startsWith('video') ? 'video' : 'image';
       }
-
       await addDoc(collection(db, 'posts'), {
-        text:      textSanitizado,
-        mediaUrl,
-        mediaType,
+        text: textSanitizado, mediaUrl, mediaType,
         userId:    user.uid,
         userName:  user.displayName ?? 'Usuario',
         userPhoto: user.photoURL    ?? '',
         likes:     [],
         createdAt: serverTimestamp(),
       });
-
-      // Limpiar formulario
       setText('');
       setFile(null);
       setPreview(null);
@@ -180,6 +113,8 @@ export default function Feed() {
         URL.revokeObjectURL(previewUrlRef.current);
         previewUrlRef.current = null;
       }
+      // Cerrar el popup al publicar exitosamente
+      if (onPublished) onPublished();
     } catch (e) {
       console.error('[Feed] Error al publicar:', e);
       setError('No se pudo publicar. Intentá de nuevo.');
@@ -188,9 +123,6 @@ export default function Feed() {
     }
   };
 
-  /**
-   * Toggle like — O(1) usando arrayUnion/arrayRemove de Firestore.
-   */
   const handleLike = async (postId: string, likes: string[]): Promise<void> => {
     if (!user) return;
     const postRef = doc(db, 'posts', postId);
@@ -205,37 +137,26 @@ export default function Feed() {
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="space-y-4">
 
-      {/* Formulario de publicación */}
-      {user && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex gap-3 items-center mb-3">
+      {/* Compose — solo visible cuando showCompose=true (popup) */}
+      {showCompose && user && (
+        <div className="space-y-3">
+          <div className="flex gap-3 items-center">
             <img
-              src={
-                user.photoURL ||
-                `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=3b82f6&color=fff`
-              }
+              src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
               alt={`Foto de ${user.displayName || 'usuario'}`}
               className="w-10 h-10 rounded-full object-cover"
             />
-            <span className="font-bold text-gray-800 text-sm">
-              {user.displayName}
-            </span>
+            <span className="font-bold text-gray-800 text-sm">{user.displayName}</span>
           </div>
 
           <textarea
             value={text}
-            onChange={(e) => {
-              if (e.target.value.length <= MAX_TEXT_LENGTH) {
-                setText(e.target.value);
-              }
-            }}
+            onChange={(e) => { if (e.target.value.length <= MAX_TEXT_LENGTH) setText(e.target.value); }}
             placeholder="¿Qué querés compartir?"
-            className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:border-blue-400 h-20"
+            className="w-full border border-gray-200 rounded-2xl p-3 text-sm resize-none focus:outline-none focus:border-purple-400 h-24"
             maxLength={MAX_TEXT_LENGTH}
             aria-label="Texto de la publicación"
           />
@@ -246,59 +167,37 @@ export default function Feed() {
             </span>
           </div>
 
-          {/* Vista previa del archivo */}
           {preview && (
-            <div className="relative mt-2">
-              <img
-                src={preview}
-                alt="Vista previa"
-                className="rounded-xl w-full object-cover max-h-48"
-              />
+            <div className="relative">
+              <img src={preview} alt="Vista previa" className="rounded-2xl w-full object-cover max-h-48" />
               <button
                 onClick={() => {
-                  setFile(null);
-                  setPreview(null);
-                  if (previewUrlRef.current) {
-                    URL.revokeObjectURL(previewUrlRef.current);
-                    previewUrlRef.current = null;
-                  }
+                  setFile(null); setPreview(null);
+                  if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; }
                 }}
-                className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold"
+                className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
                 aria-label="Quitar imagen"
-              >
-                ✕
-              </button>
+              >✕</button>
             </div>
           )}
 
-          {/* Mensaje de error */}
           {error && (
-            <div
-              className="flex items-center gap-2 text-red-500 text-xs mt-2"
-              role="alert"
-            >
+            <div className="flex items-center gap-2 text-red-500 text-xs" role="alert">
               <ExclamationCircleIcon className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
 
-          <div className="flex justify-between items-center mt-3">
-            <label className="flex items-center gap-1 text-gray-500 text-sm cursor-pointer active:scale-95 transition-transform">
+          <div className="flex justify-between items-center">
+            <label className="flex items-center gap-2 text-gray-500 text-sm cursor-pointer active:scale-95 transition-transform">
               <PhotoIcon className="w-5 h-5" />
               <span>Foto/Video</span>
-              <input
-                type="file"
-                accept="image/*,video/*"
-                onChange={handleFile}
-                className="hidden"
-                aria-label="Adjuntar foto o video"
-              />
+              <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
             </label>
-
             <button
               onClick={handlePost}
               disabled={publicando || (!text.trim() && !file)}
-              className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2 rounded-xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-transform"
+              className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-2xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-transform"
             >
               <PaperAirplaneIcon className="w-4 h-4" />
               {publicando ? 'Publicando...' : 'Publicar'}
@@ -309,56 +208,23 @@ export default function Feed() {
 
       {/* Lista de posts */}
       {posts.map((p) => {
-        const liked         = p.likes?.includes(user?.uid ?? '');
-        const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(p.userName || 'U')}&background=3b82f6&color=fff`;
-
+        const liked          = p.likes?.includes(user?.uid ?? '');
+        const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(p.userName || 'U')}&background=7c3aed&color=fff`;
         return (
-          <article
-            key={p.id}
-            className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
-          >
-            {/* Cabecera del post */}
+          <article key={p.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="flex gap-3 items-center p-4">
-              <img
-                src={p.userPhoto || avatarFallback}
-                alt={`Foto de ${p.userName}`}
-                className="w-10 h-10 rounded-full object-cover"
-              />
+              <img src={p.userPhoto || avatarFallback} alt={`Foto de ${p.userName}`} className="w-10 h-10 rounded-full object-cover" />
               <div>
-                <p className="font-bold text-gray-800 text-sm">
-                  {p.userName || 'Usuario'}
-                </p>
+                <p className="font-bold text-gray-800 text-sm">{p.userName || 'Usuario'}</p>
                 <p className="text-xs text-gray-400">{formatFecha(p.createdAt)}</p>
               </div>
             </div>
-
-            {/* Texto */}
-            {p.text && (
-              <p className="px-4 pb-3 text-gray-700 text-sm leading-relaxed">
-                {p.text}
-              </p>
-            )}
-
-            {/* Media */}
+            {p.text && <p className="px-4 pb-3 text-gray-700 text-sm leading-relaxed">{p.text}</p>}
             {p.mediaUrl && (
-              p.mediaType === 'video' ? (
-                <video
-                  src={p.mediaUrl}
-                  controls
-                  className="w-full max-h-80 object-cover"
-                  aria-label="Video del post"
-                />
-              ) : (
-                <img
-                  src={p.mediaUrl}
-                  alt="Imagen del post"
-                  className="w-full max-h-80 object-cover"
-                  loading="lazy"
-                />
-              )
+              p.mediaType === 'video'
+                ? <video src={p.mediaUrl} controls className="w-full max-h-80 object-cover" />
+                : <img src={p.mediaUrl} alt="Imagen del post" className="w-full max-h-80 object-cover" loading="lazy" />
             )}
-
-            {/* Acciones */}
             <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-50">
               <button
                 onClick={() => handleLike(p.id, p.likes || [])}
@@ -366,10 +232,7 @@ export default function Feed() {
                 aria-label={liked ? 'Quitar like' : 'Dar like'}
                 aria-pressed={liked}
               >
-                {liked
-                  ? <HeartSolid className="w-6 h-6 text-red-500" />
-                  : <HeartIcon  className="w-6 h-6 text-gray-400" />
-                }
+                {liked ? <HeartSolid className="w-6 h-6 text-red-500" /> : <HeartIcon className="w-6 h-6 text-gray-400" />}
                 <span className={`text-sm font-bold ${liked ? 'text-red-500' : 'text-gray-400'}`}>
                   {p.likes?.length || 0}
                 </span>
@@ -379,8 +242,7 @@ export default function Feed() {
         );
       })}
 
-      {/* Estado vacío */}
-      {posts.length === 0 && !error && (
+      {posts.length === 0 && !error && !showCompose && (
         <div className="text-center py-16 text-gray-300">
           <p className="font-bold text-lg">Sin publicaciones aún</p>
           <p className="text-sm">¡Sé el primero en compartir algo!</p>
@@ -388,4 +250,4 @@ export default function Feed() {
       )}
     </div>
   );
-}
+            }
