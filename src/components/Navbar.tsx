@@ -1,18 +1,35 @@
+// src/components/Navbar.tsx
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../app/firebase';
 import { useTheme } from '../context/ThemeContext';
 import {
   Bars3Icon, PlusIcon, BellIcon, ArrowsRightLeftIcon, HomeIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavbarProps {
-  onMenuClick?:   () => void;
+  onMenuClick?:    () => void;
   onPublishClick?: () => void;
 }
 
 export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
-  const { isSocialMode, toggleMode } = useTheme();
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const { isSocialMode, toggleMode, user } = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [sinLeer, setSinLeer] = useState(0);
+
+  // Badge notificaciones en tiempo real
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'notifications'),
+      where('uid', '==', user.uid),
+      where('leida', '==', false),
+    );
+    const unsub = onSnapshot(q, snap => setSinLeer(snap.size));
+    return () => unsub();
+  }, [user]);
 
   const handleSwitch = () => {
     toggleMode();
@@ -21,17 +38,17 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
 
   const activo = (path: string) =>
     location.pathname === path
-      ? isSocialMode ? 'text-purple-600' : 'text-blue-600'
+      ? 'text-[--sc-500]'
       : 'text-gray-400';
 
-  const color  = isSocialMode ? 'text-purple-600'  : 'text-blue-600';
-  const bg     = isSocialMode ? 'bg-purple-100'     : 'bg-blue-100';
-  const border = isSocialMode ? 'border-purple-100' : 'border-blue-100';
-  const accent = isSocialMode ? 'bg-purple-600'     : 'bg-blue-600';
+  const color  = 'text-[--sc-500]';
+  const bg     = 'bg-[--sc-100]';
+  const border = 'border-[--sc-100]';
+  const accent = 'bg-[--sc-500]';
 
   return (
     <nav
-      className={`fixed bottom-0 left-0 right-0 w-full border-t ${border} bg-white/95 backdrop-blur-md z-[100] shadow-[0_-2px_10px_rgba(0,0,0,0.06)]`}
+      className={`fixed bottom-0 left-0 right-0 w-full border-t ${border} bg-white/95 dark:bg-gray-900/95 backdrop-blur-md z-[100] shadow-[0_-2px_10px_rgba(0,0,0,0.06)]`}
       role="navigation"
       aria-label="Navegación principal"
     >
@@ -53,12 +70,12 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           <span className="text-[9px] text-gray-400">Inicio</span>
         </Link>
 
-        {/* Botón central — círculo flotante */}
+        {/* Botón central */}
         <div className="flex flex-col items-center" style={{ marginTop: '-24px' }}>
           <button
             onClick={isSocialMode ? onPublishClick : () => navigate('/jobs')}
             aria-label={isSocialMode ? 'Nueva publicación' : 'Ver empleos'}
-            className={`w-14 h-14 ${accent} rounded-full flex items-center justify-center shadow-lg border-4 border-white active:scale-90 transition-transform`}
+            className={`w-14 h-14 ${accent} rounded-full flex items-center justify-center shadow-lg border-4 border-white dark:border-gray-900 active:scale-90 transition-transform`}
           >
             <PlusIcon className="w-7 h-7 text-white" strokeWidth={2.5} />
           </button>
@@ -67,9 +84,19 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           </span>
         </div>
 
-        {/* Alertas */}
-        <Link to="/" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform opacity-50">
-          <BellIcon className="w-6 h-6 text-gray-400" />
+        {/* Alertas con badge */}
+        <Link
+          to="/notificaciones"
+          className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform relative"
+        >
+          <div className="relative">
+            <BellIcon className={`w-6 h-6 ${activo('/notificaciones')}`} />
+            {sinLeer > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">
+                {sinLeer > 9 ? '9+' : sinLeer}
+              </span>
+            )}
+          </div>
           <span className="text-[9px] text-gray-400">Alertas</span>
         </Link>
 
@@ -88,4 +115,4 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
       </div>
     </nav>
   );
-      }
+            }
