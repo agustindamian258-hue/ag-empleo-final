@@ -1,18 +1,41 @@
+/* src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* REGLA DE ORO: Control total de iconos en móvil */
+:root {
+  --sc-500: #3b82f6;
+  --sc-600: #2563eb;
+  --sc-100: #dbeafe;
+  --sc-700: #1d4ed8;
+}
+
 svg {
   display: block;
   max-width: 100%;
 }
 
-/* Mejora para los botones grandes que querés */
 .nav-center-button {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
 }
 
-/* Estilos para el cambio de modo real y visual */
-.theme-social { background-color: #ffffff; min-height: 100vh; }
-.theme-empleo { background-color: #f8fafc; min-height: 100vh; }
+.theme-social {
+  background-color: #ffffff;
+  min-height: 100vh;
+}
+
+.theme-empleo {
+  background-color: #f8fafc;
+  min-height: 100vh;
+}
+
+/* Dark mode base */
+.dark .theme-social,
+.dark .theme-empleo {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+.dark body {
+  background-color: #0f172a;
+}
