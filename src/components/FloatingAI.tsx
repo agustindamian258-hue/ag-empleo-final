@@ -68,48 +68,45 @@ export default function FloatingAI() {
 
     try {
       const perfil = await obtenerPerfilUsuario();
-
-      const mensajesApi = nuevoHistorial.slice(-MAX_HISTORIAL).map((h) => ({
-        role:    h.role === 'ai' ? 'assistant' : 'user',
-        content: h.content,
-      }));
-
       const systemFinal = perfil
         ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}`
         : SYSTEM_PROMPT;
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type':                            'application/json',
-          'x-api-key':                               import.meta.env.VITE_ANTHROPIC_API_KEY,
-          'anthropic-version':                       '2023-06-01',
-          // Requerido para llamadas directas desde el navegador
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system:     systemFinal,
-          messages:   mensajesApi,
-        }),
-      });
+      // Convertir historial al formato de Gemini
+      const contents = nuevoHistorial.slice(-MAX_HISTORIAL).map(h => ({
+        role:  h.role === 'ai' ? 'model' : 'user',
+        parts: [{ text: h.content }],
+      }));
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemFinal }] },
+            contents,
+            generationConfig: { maxOutputTokens: 500, temperature: 0.7 },
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(`API ${response.status}: ${errData?.error?.message ?? 'Error desconocido'}`);
+        throw new Error(`API ${response.status}: ${JSON.stringify(errData)}`);
       }
 
       const data  = await response.json();
-      const texto = data.content?.[0]?.text?.trim() || '¿Me lo repetís? No entendí bien.';
+      const texto = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+        || '¿Me lo repetís? No entendí bien.';
 
-      setHistorial((prev) => [
+      setHistorial(prev => [
         ...prev,
         { id: `ai_${Date.now()}`, role: 'ai', content: texto },
       ]);
     } catch (e) {
-      console.error('[FloatingAI] Error al enviar mensaje:', e);
-      setHistorial((prev) => [
+      console.error('[FloatingAI] Error:', e);
+      setHistorial(prev => [
         ...prev,
         { id: `ai_err_${Date.now()}`, role: 'ai', content: 'Uh, se me cortó el cable. ¿Me lo repetís?' },
       ]);
@@ -133,7 +130,6 @@ export default function FloatingAI() {
       {isOpen && (
         <div className="fixed bottom-24 right-4 w-[90vw] max-w-[360px] h-[520px] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl z-[150] flex flex-col border border-gray-100 dark:border-gray-800 overflow-hidden">
 
-          {/* Header */}
           <div className="bg-[--sc-500] p-4 flex justify-between items-center text-white">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
@@ -144,63 +140,52 @@ export default function FloatingAI() {
                 <p className="text-[10px] opacity-75">En línea ahora</p>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              aria-label="Cerrar asistente"
-              className="p-1 active:scale-90 transition-transform"
-            >
+            <button onClick={() => setIsOpen(false)} aria-label="Cerrar" className="p-1 active:scale-90 transition-transform">
               <XMarkIcon className="w-6 h-6" />
             </button>
           </div>
 
-          {/* Mensajes */}
           <div
             ref={scrollRef}
             className="flex-grow p-4 overflow-y-auto bg-gray-50 dark:bg-gray-950 space-y-3"
             role="log"
             aria-live="polite"
-            aria-label="Conversación con el asistente"
           >
-            {historial.map((chat) => (
+            {historial.map(chat => (
               <div key={chat.id} className={`flex ${chat.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
-                <div
-                  className={`px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-[85%] ${
-                    chat.role === 'ai'
-                      ? 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-tl-none border border-gray-100 dark:border-gray-700 shadow-sm'
-                      : 'bg-[--sc-500] text-white rounded-tr-none'
-                  }`}
-                >
+                <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-[85%] ${
+                  chat.role === 'ai'
+                    ? 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-tl-none border border-gray-100 dark:border-gray-700 shadow-sm'
+                    : 'bg-[--sc-500] text-white rounded-tr-none'
+                }`}>
                   {chat.content}
                 </div>
               </div>
             ))}
 
             {cargando && (
-              <div className="flex gap-1 p-3" aria-label="La IA está escribiendo">
-                <div className="w-2 h-2 bg-[--sc-300] rounded-full animate-bounce" />
+              <div className="flex gap-1 p-3">
+                <div className="w-2 h-2 bg-[--sc-500] rounded-full animate-bounce" />
                 <div className="w-2 h-2 bg-[--sc-500] rounded-full animate-bounce [animation-delay:0.15s]" />
-                <div className="w-2 h-2 bg-[--sc-600] rounded-full animate-bounce [animation-delay:0.3s]" />
+                <div className="w-2 h-2 bg-[--sc-500] rounded-full animate-bounce [animation-delay:0.3s]" />
               </div>
             )}
           </div>
 
-          {/* Input */}
           <div className="p-3 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex gap-2">
             <input
               type="text"
               value={mensaje}
-              onChange={(e) => { if (e.target.value.length <= MAX_INPUT) setMensaje(e.target.value); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEnviar(); } }}
+              onChange={e => { if (e.target.value.length <= MAX_INPUT) setMensaje(e.target.value); }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEnviar(); } }}
               placeholder="Escribí tu mensaje..."
               className="flex-grow bg-gray-100 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[--sc-500]"
               disabled={cargando}
               maxLength={MAX_INPUT}
-              aria-label="Mensaje al asistente"
             />
             <button
               onClick={handleEnviar}
               disabled={cargando || !mensaje.trim()}
-              aria-label="Enviar mensaje"
               className="bg-[--sc-500] w-11 h-11 flex items-center justify-center rounded-2xl text-white active:scale-95 transition-transform disabled:opacity-50"
             >
               <PaperAirplaneIcon className="w-5 h-5" />
@@ -210,4 +195,4 @@ export default function FloatingAI() {
       )}
     </>
   );
-      }
+}
