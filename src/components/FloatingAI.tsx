@@ -69,9 +69,8 @@ export default function FloatingAI() {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-      // Debug: mostrar si la key está cargada
       if (!apiKey) {
-        throw new Error('KEY_NO_CARGADA: VITE_GEMINI_API_KEY está vacía. Reiniciá el servidor.');
+        throw new Error('KEY_NO_CARGADA: reiniciá el servidor.');
       }
 
       const perfil = await obtenerPerfilUsuario();
@@ -85,7 +84,7 @@ export default function FloatingAI() {
       }));
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -100,7 +99,6 @@ export default function FloatingAI() {
       const data = await response.json();
 
       if (!response.ok) {
-        // Mostrar error real en el chat para diagnóstico
         throw new Error(`ERROR ${response.status}: ${JSON.stringify(data?.error ?? data)}`);
       }
 
@@ -114,7 +112,6 @@ export default function FloatingAI() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[FloatingAI] Error:', msg);
-      // Mostrar error real en el chat para poder diagnosticar
       setHistorial(prev => [
         ...prev,
         { id: `ai_err_${Date.now()}`, role: 'ai', content: `⚠️ ${msg}` },
