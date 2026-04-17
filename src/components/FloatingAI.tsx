@@ -67,6 +67,13 @@ export default function FloatingAI() {
     setHistorial(nuevoHistorial);
 
     try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+      // Debug: mostrar si la key está cargada
+      if (!apiKey) {
+        throw new Error('KEY_NO_CARGADA: VITE_GEMINI_API_KEY está vacía. Reiniciá el servidor.');
+      }
+
       const perfil = await obtenerPerfilUsuario();
       const systemFinal = perfil
         ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}`
@@ -77,15 +84,11 @@ export default function FloatingAI() {
         parts: [{ text: h.content }],
       }));
 
-      // Bearer token para keys AQ. de Google AI Studio
       const response = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_GEMINI_API_KEY}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemFinal }] },
             contents,
@@ -94,12 +97,13 @@ export default function FloatingAI() {
         }
       );
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(`API ${response.status}: ${JSON.stringify(errData)}`);
+        // Mostrar error real en el chat para diagnóstico
+        throw new Error(`ERROR ${response.status}: ${JSON.stringify(data?.error ?? data)}`);
       }
 
-      const data  = await response.json();
       const texto = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
         || '¿Me lo repetís? No entendí bien.';
 
@@ -107,11 +111,13 @@ export default function FloatingAI() {
         ...prev,
         { id: `ai_${Date.now()}`, role: 'ai', content: texto },
       ]);
-    } catch (e) {
-      console.error('[FloatingAI] Error:', e);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[FloatingAI] Error:', msg);
+      // Mostrar error real en el chat para poder diagnosticar
       setHistorial(prev => [
         ...prev,
-        { id: `ai_err_${Date.now()}`, role: 'ai', content: 'Uh, se me cortó el cable. ¿Me lo repetís?' },
+        { id: `ai_err_${Date.now()}`, role: 'ai', content: `⚠️ ${msg}` },
       ]);
     } finally {
       setCargando(false);
@@ -198,4 +204,4 @@ export default function FloatingAI() {
       )}
     </>
   );
-                                                                }
+}
