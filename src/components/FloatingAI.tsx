@@ -67,7 +67,7 @@ export default function FloatingAI() {
     setHistorial(nuevoHistorial);
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
 
       if (!apiKey) {
         throw new Error('KEY_NO_CARGADA: reiniciá el servidor.');
@@ -78,20 +78,25 @@ export default function FloatingAI() {
         ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}`
         : SYSTEM_PROMPT;
 
-      const contents = nuevoHistorial.slice(-MAX_HISTORIAL).map(h => ({
-        role:  h.role === 'ai' ? 'model' : 'user',
-        parts: [{ text: h.content }],
-      }));
-
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        'https://openrouter.ai/api/v1/chat/completions',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            'HTTP-Referer':  'https://ag-empleo.app',
+            'X-Title':       'AG Empleo',
+          },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemFinal }] },
-            contents,
-            generationConfig: { maxOutputTokens: 500, temperature: 0.7 },
+            model: 'meta-llama/llama-3.1-8b-instruct:free',
+            messages: [
+              { role: 'system', content: systemFinal },
+              ...nuevoHistorial.slice(-MAX_HISTORIAL).map(h => ({
+                role:    h.role === 'ai' ? 'assistant' : 'user',
+                content: h.content,
+              })),
+            ],
           }),
         }
       );
@@ -102,7 +107,7 @@ export default function FloatingAI() {
         throw new Error(`ERROR ${response.status}: ${JSON.stringify(data?.error ?? data)}`);
       }
 
-      const texto = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      const texto = data.choices?.[0]?.message?.content?.trim()
         || '¿Me lo repetís? No entendí bien.';
 
       setHistorial(prev => [
