@@ -89,7 +89,7 @@ export default function FloatingAI() {
             'X-Title':       'AG Empleo',
           },
           body: JSON.stringify({
-            model: 'meta-llama/llama-3.1-8b-instruct:free',
+            model: 'meta-llama/llama-4-scout:free',
             messages: [
               { role: 'system', content: systemFinal },
               ...nuevoHistorial.slice(-MAX_HISTORIAL).map(h => ({
