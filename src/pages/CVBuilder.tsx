@@ -945,4 +945,4 @@ export default function CVBuilder() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-      }
+                          }
