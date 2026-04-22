@@ -1,7 +1,7 @@
 /* src/index.css */
 @tailwind base;
-@tailwind components;
 @tailwind utilities;
+@tailwind components;
 
 :root {
   --sc-500: #3b82f6;
@@ -38,4 +38,14 @@ svg {
 
 .dark body {
   background-color: #0f172a;
+}
+
+/* Animación modal bottom sheet */
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
