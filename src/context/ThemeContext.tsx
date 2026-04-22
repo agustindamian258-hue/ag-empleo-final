@@ -1,5 +1,5 @@
 // src/context/ThemeContext.tsx
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 
 export type SocialColor =
@@ -11,13 +11,13 @@ export type SocialColor =
   | 'teal';
 
 export interface ThemeContextType {
-  isSocialMode: boolean;
-  toggleMode: () => void;
-  user: User | null;
-  setUser: (user: User | null) => void;
-  socialColor: SocialColor;
+  isSocialMode:   boolean;
+  toggleMode:     () => void;
+  user:           User | null;
+  setUser:        (user: User | null) => void;
+  socialColor:    SocialColor;
   setSocialColor: (c: SocialColor) => void;
-  darkMode: boolean;
+  darkMode:       boolean;
   toggleDarkMode: () => void;
 }
 
@@ -57,6 +57,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [darkMode,     setDarkMode]     = useState<boolean>(getDark);
   const [user,         setUser]         = useState<User | null>(null);
 
+  // ✅ Aplica/quita clase "dark" en <html> cada vez que cambia darkMode
+  useEffect(() => {
+    const root = document.documentElement;
+    if (darkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [darkMode]);
+
   const toggleMode = () =>
     setIsSocialMode(p => { const n = !p; setStoredMode(n); return n; });
 
@@ -75,4 +85,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       {children}
     </ThemeContext.Provider>
   );
-                }
+}
