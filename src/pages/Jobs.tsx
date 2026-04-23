@@ -1,25 +1,19 @@
 // src/pages/Jobs.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db, auth } from '../app/firebase';
+import { storage } from '../app/firebase';
 import {
-  collection,
-  query,
-  orderBy,
-  onSnapshot,
-  addDoc,
-  serverTimestamp,
+  collection, query, orderBy, onSnapshot,
+  addDoc, serverTimestamp,
 } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import Navbar from '../components/Navbar';
-import Menu from '../components/Menu';
+import Menu   from '../components/Menu';
 import {
-  BriefcaseIcon,
-  MapPinIcon,
-  CurrencyDollarIcon,
-  MagnifyingGlassIcon,
-  ExclamationCircleIcon,
-  PlusIcon,
-  XMarkIcon,
+  BriefcaseIcon, MapPinIcon, CurrencyDollarIcon,
+  MagnifyingGlassIcon, ExclamationCircleIcon,
+  PlusIcon, XMarkIcon, PhotoIcon,
 } from '@heroicons/react/24/outline';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -34,6 +28,8 @@ interface Empleo {
   salario?:    string;
   tipo:        TipoEmpleo | string;
   descripcion: string;
+  mediaUrl?:   string;
+  mediaType?:  'image' | 'video' | '';
   createdAt:   { toDate: () => Date } | null;
 }
 
@@ -47,18 +43,15 @@ interface FormData {
 }
 
 const FORM_INICIAL: FormData = {
-  titulo:      '',
-  empresa:     '',
-  ubicacion:   '',
-  salario:     '',
-  tipo:        'full-time',
-  descripcion: '',
+  titulo: '', empresa: '', ubicacion: '',
+  salario: '', tipo: 'full-time', descripcion: '',
 };
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const TIPOS = ['todos', 'full-time', 'part-time', 'changa', 'remoto'] as const;
+const TIPOS      = ['todos', 'full-time', 'part-time', 'changa', 'remoto'] as const;
 const TIPOS_FORM: TipoEmpleo[] = ['full-time', 'part-time', 'changa', 'remoto'];
+const MAX_FILE_MB = 100;
 
 const BADGE_COLORS: Record<string, string> = {
   'full-time': 'bg-blue-50   text-blue-700   dark:bg-blue-900/30  dark:text-blue-300',
@@ -67,42 +60,59 @@ const BADGE_COLORS: Record<string, string> = {
   'changa':    'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function formatFecha(createdAt: Empleo['createdAt']): string {
   if (!createdAt?.toDate) return '';
-  return createdAt.toDate().toLocaleDateString('es-AR', {
-    day:   'numeric',
-    month: 'short',
-  });
+  return createdAt.toDate().toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
 
-// ─── Subcomponente: Modal de publicación ──────────────────────────────────────
+// ─── Modal publicar ───────────────────────────────────────────────────────────
 
-interface ModalPublicarProps {
-  onClose:  () => void;
-  onGuardado: () => void;
-}
-
-function ModalPublicar({ onClose, onGuardado }: ModalPublicarProps) {
+function ModalPublicar({ onClose }: { onClose: () => void }) {
   const [form,      setForm]      = useState<FormData>(FORM_INICIAL);
+  const [file,      setFile]      = useState<File | null>(null);
+  const [preview,   setPreview]   = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [errForm,   setErrForm]   = useState('');
+  const previewRef = useRef<string | null>(null);
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const inputBase = 'w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sc-500)] placeholder-gray-400 dark:placeholder-gray-500';
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    setErrForm('');
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) {
+      setErrForm('Solo imágenes o videos.'); return;
+    }
+    if (f.size > MAX_FILE_MB * 1024 * 1024) {
+      setErrForm(`Máximo ${MAX_FILE_MB}MB.`); return;
+    }
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    const url = URL.createObjectURL(f);
+    previewRef.current = url;
+    setFile(f);
+    setPreview(url);
   }
 
   async function handleSubmit() {
     if (!form.titulo.trim() || !form.empresa.trim() || !form.ubicacion.trim() || !form.descripcion.trim()) {
-      setErrForm('Completá todos los campos obligatorios.');
-      return;
+      setErrForm('Completá todos los campos obligatorios.'); return;
     }
     setGuardando(true);
     setErrForm('');
     try {
+      let mediaUrl  = '';
+      let mediaType: 'image' | 'video' | '' = '';
+      if (file) {
+        const sRef = storageRef(storage, `empleos/${Date.now()}_${file.name}`);
+        await uploadBytes(sRef, file);
+        mediaUrl  = await getDownloadURL(sRef);
+        mediaType = file.type.startsWith('video') ? 'video' : 'image';
+      }
       await addDoc(collection(db, 'empleos'), {
         titulo:      form.titulo.trim(),
         empresa:     form.empresa.trim(),
@@ -110,10 +120,10 @@ function ModalPublicar({ onClose, onGuardado }: ModalPublicarProps) {
         salario:     form.salario.trim() || null,
         tipo:        form.tipo,
         descripcion: form.descripcion.trim(),
+        mediaUrl, mediaType,
         createdAt:   serverTimestamp(),
         uid:         auth.currentUser?.uid ?? null,
       });
-      onGuardado();
       onClose();
     } catch (err) {
       console.error('[Jobs] Error al publicar:', err);
@@ -123,72 +133,33 @@ function ModalPublicar({ onClose, onGuardado }: ModalPublicarProps) {
     }
   }
 
-  const inputBase =
-    'w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sc-500)] placeholder-gray-400 dark:placeholder-gray-500';
-
   return (
-    /* Overlay */
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      {/* Sheet */}
-      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 pb-10 space-y-4 animate-slide-up">
+      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 pb-10 space-y-4 animate-slide-up overflow-y-auto max-h-[90vh]">
 
-        {/* Cabecera */}
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">
-            Publicar empleo
-          </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">Publicar empleo</h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-            aria-label="Cerrar"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
           >
             <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Campos */}
-        <input
-          name="titulo"
-          value={form.titulo}
-          onChange={handleChange}
-          placeholder="Título del puesto *"
-          className={inputBase}
-          maxLength={80}
-        />
-        <input
-          name="empresa"
-          value={form.empresa}
-          onChange={handleChange}
-          placeholder="Empresa *"
-          className={inputBase}
-          maxLength={80}
-        />
-        <input
-          name="ubicacion"
-          value={form.ubicacion}
-          onChange={handleChange}
-          placeholder="Ubicación *"
-          className={inputBase}
-          maxLength={80}
-        />
-        <input
-          name="salario"
-          value={form.salario}
-          onChange={handleChange}
-          placeholder="Salario (opcional)"
-          className={inputBase}
-          maxLength={40}
-        />
+        <input name="titulo"    value={form.titulo}    onChange={handleChange} placeholder="Título del puesto *"  className={inputBase} maxLength={80} />
+        <input name="empresa"   value={form.empresa}   onChange={handleChange} placeholder="Empresa *"            className={inputBase} maxLength={80} />
+        <input name="ubicacion" value={form.ubicacion} onChange={handleChange} placeholder="Ubicación *"          className={inputBase} maxLength={80} />
+        <input name="salario"   value={form.salario}   onChange={handleChange} placeholder="Salario (opcional)"   className={inputBase} maxLength={40} />
 
-        {/* Selector tipo */}
+        {/* Tipo */}
         <div className="flex gap-2 flex-wrap">
           {TIPOS_FORM.map((t) => (
             <button
-              key={t}
-              type="button"
+              key={t} type="button"
               onClick={() => setForm((p) => ({ ...p, tipo: t }))}
               className={`px-3 py-1.5 rounded-full text-xs font-black transition-all active:scale-95 ${
                 form.tipo === t
@@ -211,7 +182,27 @@ function ModalPublicar({ onClose, onGuardado }: ModalPublicarProps) {
           maxLength={500}
         />
 
-        {/* Error */}
+        {/* Upload foto/video */}
+        {preview ? (
+          <div className="relative rounded-2xl overflow-hidden bg-black">
+            {file?.type.startsWith('video') ? (
+              <video src={preview} controls className="w-full max-h-48 object-cover" />
+            ) : (
+              <img src={preview} alt="Vista previa" className="w-full max-h-48 object-cover" />
+            )}
+            <button
+              onClick={() => { setFile(null); setPreview(null); }}
+              className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
+            >✕</button>
+          </div>
+        ) : (
+          <label className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
+            <PhotoIcon className="w-5 h-5 text-[var(--sc-500)]" />
+            <span>Agregar foto o video (opcional)</span>
+            <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
+          </label>
+        )}
+
         {errForm && (
           <p className="text-red-500 text-xs flex items-center gap-1">
             <ExclamationCircleIcon className="w-4 h-4 shrink-0" />
@@ -219,7 +210,6 @@ function ModalPublicar({ onClose, onGuardado }: ModalPublicarProps) {
           </p>
         )}
 
-        {/* Botón publicar */}
         <button
           type="button"
           onClick={handleSubmit}
@@ -227,13 +217,8 @@ function ModalPublicar({ onClose, onGuardado }: ModalPublicarProps) {
           className="w-full py-3.5 rounded-2xl bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {guardando ? (
-            <>
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Publicando...
-            </>
-          ) : (
-            'Publicar empleo'
-          )}
+            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Publicando...</>
+          ) : 'Publicar empleo'}
         </button>
       </div>
     </div>
@@ -252,27 +237,16 @@ export default function Jobs() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [usuario,      setUsuario]      = useState<User | null>(null);
 
-  // Auth listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUsuario);
     return () => unsub();
   }, []);
 
-  // Empleos en tiempo real
   useEffect(() => {
     const q = query(collection(db, 'empleos'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setEmpleos(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Empleo)));
-        setCargando(false);
-        setError('');
-      },
-      (err) => {
-        console.error('[Jobs] Error al cargar empleos:', err);
-        setError('No se pudieron cargar los empleos. Revisá tu conexión.');
-        setCargando(false);
-      }
+    const unsub = onSnapshot(q,
+      (snap) => { setEmpleos(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Empleo))); setCargando(false); },
+      (err)  => { console.error('[Jobs]', err); setError('No se pudieron cargar los empleos.'); setCargando(false); }
     );
     return () => unsub();
   }, []);
@@ -280,10 +254,9 @@ export default function Jobs() {
   const empleosFiltrados = empleos.filter((e) => {
     const coincideTipo  = filtro === 'todos' || e.tipo === filtro;
     const termino       = busqueda.toLowerCase().trim();
-    const coincideTexto =
-      !termino ||
-      e.titulo.toLowerCase().includes(termino)    ||
-      e.empresa.toLowerCase().includes(termino)   ||
+    const coincideTexto = !termino ||
+      e.titulo.toLowerCase().includes(termino) ||
+      e.empresa.toLowerCase().includes(termino) ||
       e.ubicacion.toLowerCase().includes(termino);
     return coincideTipo && coincideTexto;
   });
@@ -291,41 +264,30 @@ export default function Jobs() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
 
-      {/* Header */}
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-5 py-4 shadow-sm">
-        <h1 className="text-2xl font-black text-[var(--sc-700)] dark:text-[var(--sc-100)] tracking-tighter">
-          Empleos
-        </h1>
+        <h1 className="text-2xl font-black text-[var(--sc-700)] dark:text-[var(--sc-100)] tracking-tighter">Empleos</h1>
         <p className="text-gray-400 dark:text-gray-500 text-xs">
-          {cargando
-            ? 'Cargando...'
-            : `${empleosFiltrados.length} oferta${empleosFiltrados.length !== 1 ? 's' : ''} disponible${empleosFiltrados.length !== 1 ? 's' : ''}`}
+          {cargando ? 'Cargando...' : `${empleosFiltrados.length} oferta${empleosFiltrados.length !== 1 ? 's' : ''} disponible${empleosFiltrados.length !== 1 ? 's' : ''}`}
         </p>
       </header>
 
-      {/* Buscador */}
       <div className="px-4 pt-4">
         <div className="relative">
           <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
-            type="text"
-            value={busqueda}
+            type="text" value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Buscar por título, empresa o ciudad..."
-            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--sc-500)]"
-            aria-label="Buscar empleos"
+            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--sc-500)]"
           />
         </div>
       </div>
 
-      {/* Filtros por tipo */}
       <div className="px-4 pt-3 overflow-x-auto">
-        <div className="flex gap-2 pb-1" role="group" aria-label="Filtrar por tipo de empleo">
+        <div className="flex gap-2 pb-1">
           {TIPOS.map((t) => (
             <button
-              key={t}
-              onClick={() => setFiltro(t)}
-              aria-pressed={filtro === t}
+              key={t} onClick={() => setFiltro(t)} aria-pressed={filtro === t}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-black transition-all active:scale-95 ${
                 filtro === t
                   ? 'bg-[var(--sc-600)] text-white shadow-md'
@@ -338,23 +300,15 @@ export default function Jobs() {
         </div>
       </div>
 
-      {/* Contenido */}
       <div className="px-4 pt-4 space-y-3">
-
         {cargando && (
           <div className="flex justify-center py-10">
-            <div
-              className="w-8 h-8 border-4 border-[var(--sc-600)] border-t-transparent rounded-full animate-spin"
-              aria-label="Cargando empleos"
-            />
+            <div className="w-8 h-8 border-4 border-[var(--sc-600)] border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
         {error && (
-          <div
-            className="flex items-center gap-2 p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl text-red-600 dark:text-red-400 text-sm"
-            role="alert"
-          >
+          <div className="flex items-center gap-2 p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl text-red-600 dark:text-red-400 text-sm" role="alert">
             <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
             {error}
           </div>
@@ -373,57 +327,58 @@ export default function Jobs() {
         )}
 
         {empleosFiltrados.map((empleo) => (
-          <article
-            key={empleo.id}
-            className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4"
-          >
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 bg-[var(--sc-100)] dark:bg-[var(--sc-700)]/20 rounded-xl flex items-center justify-center shrink-0">
-                  <BriefcaseIcon className="w-6 h-6 text-[var(--sc-600)] dark:text-[var(--sc-500)]" />
+          <article key={empleo.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+            <div className="p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 bg-[var(--sc-100)] dark:bg-[var(--sc-700)]/20 rounded-xl flex items-center justify-center shrink-0">
+                    <BriefcaseIcon className="w-6 h-6 text-[var(--sc-600)] dark:text-[var(--sc-500)]" />
+                  </div>
+                  <div>
+                    <p className="font-black text-gray-800 dark:text-gray-100 text-sm">{empleo.titulo}</p>
+                    <p className="text-gray-500 dark:text-gray-400 text-xs">{empleo.empresa}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-black text-gray-800 dark:text-gray-100 text-sm">{empleo.titulo}</p>
-                  <p className="text-gray-500 dark:text-gray-400 text-xs">{empleo.empresa}</p>
-                </div>
-              </div>
-              <span
-                className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${
-                  BADGE_COLORS[empleo.tipo] ?? 'bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                }`}
-              >
-                {empleo.tipo?.toUpperCase()}
-              </span>
-            </div>
-
-            <p className="text-gray-600 dark:text-gray-400 text-xs leading-relaxed mb-3 line-clamp-2">
-              {empleo.descripcion}
-            </p>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
-                <span className="flex items-center gap-1">
-                  <MapPinIcon className="w-3.5 h-3.5 shrink-0" />
-                  {empleo.ubicacion}
+                <span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${BADGE_COLORS[empleo.tipo] ?? 'bg-gray-50 text-gray-600'}`}>
+                  {empleo.tipo?.toUpperCase()}
                 </span>
-                {empleo.salario && (
-                  <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold">
-                    <CurrencyDollarIcon className="w-3.5 h-3.5 shrink-0" />
-                    {empleo.salario}
+              </div>
+
+              <p className="text-gray-600 dark:text-gray-400 text-xs leading-relaxed mb-3 line-clamp-2">
+                {empleo.descripcion}
+              </p>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <MapPinIcon className="w-3.5 h-3.5 shrink-0" />
+                    {empleo.ubicacion}
+                  </span>
+                  {empleo.salario && (
+                    <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold">
+                      <CurrencyDollarIcon className="w-3.5 h-3.5 shrink-0" />
+                      {empleo.salario}
+                    </span>
+                  )}
+                </div>
+                {empleo.createdAt && (
+                  <span className="text-[10px] text-gray-300 dark:text-gray-600">
+                    {formatFecha(empleo.createdAt)}
                   </span>
                 )}
               </div>
-              {empleo.createdAt && (
-                <span className="text-[10px] text-gray-300 dark:text-gray-600">
-                  {formatFecha(empleo.createdAt)}
-                </span>
-              )}
             </div>
+
+            {/* Media del empleo */}
+            {empleo.mediaUrl && (
+              empleo.mediaType === 'video'
+                ? <video src={empleo.mediaUrl} controls className="w-full max-h-56 object-cover bg-black" />
+                : <img src={empleo.mediaUrl} alt="Imagen del empleo" className="w-full max-h-56 object-cover" loading="lazy" />
+            )}
           </article>
         ))}
       </div>
 
-      {/* FAB — solo para usuarios autenticados */}
       {usuario && (
         <button
           onClick={() => setModalAbierto(true)}
@@ -434,16 +389,10 @@ export default function Jobs() {
         </button>
       )}
 
-      {/* Modal publicar */}
-      {modalAbierto && (
-        <ModalPublicar
-          onClose={() => setModalAbierto(false)}
-          onGuardado={() => {}}
-        />
-      )}
+      {modalAbierto && <ModalPublicar onClose={() => setModalAbierto(false)} />}
 
       <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-          }
+}
