@@ -6,13 +6,14 @@ import Jobs          from '../pages/Jobs';
 import Companies     from '../pages/Companies';
 import CVBuilder     from '../pages/CVBuilder';
 import Feed          from '../pages/Feed';
+import Reels         from '../pages/Reels';
 import Login         from '../pages/Login';
 import Profile       from '../pages/Profile';
 import MapPage       from '../pages/MapPage';
 import Privacidad    from '../pages/Privacidad';
 import Notifications from '../pages/Notifications';
 
-interface AppRoutesProps   { user: User | null; loading: boolean; }
+interface AppRoutesProps    { user: User | null; loading: boolean; }
 interface ProtectedRouteProps { user: User | null; loading: boolean; children: React.ReactElement; }
 
 function LoadingScreen() {
@@ -47,6 +48,7 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
         <Route path="/cv"             element={PR(<CVBuilder />)}     />
         <Route path="/mapa"           element={PR(<MapPage />)}       />
         <Route path="/social"         element={PR(<Feed />)}          />
+        <Route path="/reels"          element={PR(<Reels />)}         />
         <Route path="/profile"        element={PR(<Profile />)}       />
         <Route path="/privacidad"     element={PR(<Privacidad />)}    />
         <Route path="/notificaciones" element={PR(<Notifications />)} />
@@ -55,4 +57,4 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
       </Routes>
     </BrowserRouter>
   );
-      }
+}
