@@ -5,7 +5,8 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../app/firebase';
 import { useTheme } from '../context/ThemeContext';
 import {
-  Bars3Icon, PlusIcon, BellIcon, ArrowsRightLeftIcon, HomeIcon,
+  Bars3Icon, PlusIcon, BellIcon,
+  ArrowsRightLeftIcon, HomeIcon, FilmIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavbarProps {
@@ -15,11 +16,10 @@ interface NavbarProps {
 
 export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
   const { isSocialMode, toggleMode, user } = useTheme();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const [sinLeer, setSinLeer] = useState(0);
 
-  // Badge notificaciones en tiempo real
   useEffect(() => {
     if (!user) return;
     const q = query(
@@ -37,9 +37,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
   };
 
   const activo = (path: string) =>
-    location.pathname === path
-      ? 'text-[--sc-500]'
-      : 'text-gray-400';
+    location.pathname === path ? 'text-[--sc-500]' : 'text-gray-400';
 
   const color  = 'text-[--sc-500]';
   const bg     = 'bg-[--sc-100]';
@@ -64,11 +62,18 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           <span className="text-[9px] text-gray-400">menú</span>
         </button>
 
-        {/* Inicio */}
-        <Link to="/" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
-          <HomeIcon className={`w-6 h-6 ${activo('/')}`} />
-          <span className="text-[9px] text-gray-400">Inicio</span>
-        </Link>
+        {/* Inicio o Reels según modo */}
+        {isSocialMode ? (
+          <Link to="/reels" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
+            <FilmIcon className={`w-6 h-6 ${activo('/reels')}`} />
+            <span className="text-[9px] text-gray-400">Reels</span>
+          </Link>
+        ) : (
+          <Link to="/" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
+            <HomeIcon className={`w-6 h-6 ${activo('/')}`} />
+            <span className="text-[9px] text-gray-400">Inicio</span>
+          </Link>
+        )}
 
         {/* Botón central */}
         <div className="flex flex-col items-center" style={{ marginTop: '-24px' }}>
@@ -84,7 +89,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           </span>
         </div>
 
-        {/* Alertas con badge */}
+        {/* Alertas */}
         <Link
           to="/notificaciones"
           className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform relative"
@@ -115,4 +120,4 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
       </div>
     </nav>
   );
-            }
+}
