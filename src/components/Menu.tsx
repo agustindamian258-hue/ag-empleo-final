@@ -1,20 +1,15 @@
+// src/components/Menu.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../app/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
+import { useTheme } from '../context/ThemeContext';
 import {
-  BuildingOfficeIcon,
-  MapIcon,
-  DocumentTextIcon,
-  ArrowLeftOnRectangleIcon,
-  XMarkIcon,
-  UserCircleIcon,
-  BriefcaseIcon,
-  ShieldCheckIcon,
+  BuildingOfficeIcon, MapIcon, DocumentTextIcon,
+  ArrowLeftOnRectangleIcon, XMarkIcon, UserCircleIcon,
+  BriefcaseIcon, ShieldCheckIcon, SunIcon, MoonIcon,
 } from '@heroicons/react/24/outline';
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface UserData {
   name?:  string;
@@ -28,32 +23,25 @@ interface MenuProps {
   onClose: () => void;
 }
 
-// ─── Componente ───────────────────────────────────────────────────────────────
-
 export default function Menu({ isOpen, onClose }: MenuProps) {
   const navigate = useNavigate();
+  const { darkMode, toggleDarkMode } = useTheme();
   const [userData,   setUserData]   = useState<UserData | null>(null);
   const [errorCarga, setErrorCarga] = useState<boolean>(false);
 
-  // Cargar datos del usuario cuando el menú se abre
   useEffect(() => {
     if (!isOpen) return;
-
     const user = auth.currentUser;
     if (!user) return;
-
     const fetchUserData = async () => {
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
-        if (snap.exists()) {
-          setUserData(snap.data() as UserData);
-        }
+        if (snap.exists()) setUserData(snap.data() as UserData);
       } catch (e) {
         console.error('[Menu] Error al cargar datos del usuario:', e);
         setErrorCarga(true);
       }
     };
-
     fetchUserData();
   }, [isOpen]);
 
@@ -80,48 +68,26 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
     onClose();
   };
 
-  // ─── Opciones del menú ────────────────────────────────────────────────────
-
   const herramientas = [
     {
-      label:     'Empresas A-Z',
-      sub:       'Directorio de empresas',
-      path:      '/companies',
-      iconClass: 'text-blue-600',
-      bgClass:   'bg-blue-50 border-blue-100',
-      Icon:      BuildingOfficeIcon,
-      textClass: 'text-blue-900',
-      subClass:  'text-blue-400',
+      label: 'Empresas A-Z', sub: 'Directorio de empresas', path: '/companies',
+      iconClass: 'text-blue-600', bgClass: 'bg-blue-50 border-blue-100',
+      Icon: BuildingOfficeIcon, textClass: 'text-blue-900', subClass: 'text-blue-400',
     },
     {
-      label:     'Mapa de Changas',
-      sub:       'Trabajos cerca tuyo',
-      path:      '/mapa',
-      iconClass: 'text-green-600',
-      bgClass:   'bg-green-50 border-green-100',
-      Icon:      MapIcon,
-      textClass: 'text-green-900',
-      subClass:  'text-green-400',
+      label: 'Mapa de Changas', sub: 'Trabajos cerca tuyo', path: '/mapa',
+      iconClass: 'text-green-600', bgClass: 'bg-green-50 border-green-100',
+      Icon: MapIcon, textClass: 'text-green-900', subClass: 'text-green-400',
     },
     {
-      label:     'Generador de CV',
-      sub:       'Crea tu curriculum en PDF',
-      path:      '/cv',
-      iconClass: 'text-orange-600',
-      bgClass:   'bg-orange-50 border-orange-100',
-      Icon:      DocumentTextIcon,
-      textClass: 'text-orange-900',
-      subClass:  'text-orange-400',
+      label: 'Generador de CV', sub: 'Crea tu curriculum en PDF', path: '/cv',
+      iconClass: 'text-orange-600', bgClass: 'bg-orange-50 border-orange-100',
+      Icon: DocumentTextIcon, textClass: 'text-orange-900', subClass: 'text-orange-400',
     },
     {
-      label:     'Empleos',
-      sub:       'Ofertas de trabajo',
-      path:      '/jobs',
-      iconClass: 'text-purple-600',
-      bgClass:   'bg-purple-50 border-purple-100',
-      Icon:      BriefcaseIcon,
-      textClass: 'text-purple-900',
-      subClass:  'text-purple-400',
+      label: 'Empleos', sub: 'Ofertas de trabajo', path: '/jobs',
+      iconClass: 'text-purple-600', bgClass: 'bg-purple-50 border-purple-100',
+      Icon: BriefcaseIcon, textClass: 'text-purple-900', subClass: 'text-purple-400',
     },
   ] as const;
 
@@ -134,11 +100,11 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
       aria-label="Menú de navegación"
     >
       <div
-        className="w-4/5 h-full bg-white shadow-2xl flex flex-col"
+        className="w-4/5 h-full bg-white dark:bg-gray-900 shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header con info del usuario */}
-        <div className="p-5 bg-blue-600 text-white">
+        {/* Header */}
+        <div className="p-5 bg-blue-600 dark:bg-blue-800 text-white">
           <div className="flex justify-between items-start mb-4">
             <div>
               <h2 className="text-xl font-black tracking-tighter">AG EMPLEO</h2>
@@ -152,7 +118,6 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
               <XMarkIcon className="w-5 h-5 text-white" />
             </button>
           </div>
-
           <div className="flex items-center gap-3">
             <img
               src={avatarUrl}
@@ -164,9 +129,7 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
                 {userData?.name || user?.displayName || 'Usuario'}
               </p>
               <p className="text-xs opacity-75">
-                {errorCarga
-                  ? 'Error al cargar perfil'
-                  : userData?.title || 'Completá tu perfil'}
+                {errorCarga ? 'Error al cargar perfil' : userData?.title || 'Completá tu perfil'}
               </p>
             </div>
           </div>
@@ -192,7 +155,7 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
             </button>
           ))}
 
-          {/* Sección Cuenta */}
+          {/* Cuenta */}
           <div className="pt-2">
             <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">
               Cuenta
@@ -200,24 +163,44 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
 
             <button
               onClick={() => goTo('/profile')}
-              className="w-full flex items-center gap-4 p-4 bg-gray-50 rounded-2xl active:scale-95 transition-all border border-gray-100"
+              className="w-full flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl active:scale-95 transition-all border border-gray-100 dark:border-gray-700"
             >
               <UserCircleIcon className="w-6 h-6 text-gray-500" />
-              <p className="font-bold text-gray-700 text-sm">Mi Perfil</p>
+              <p className="font-bold text-gray-700 dark:text-gray-200 text-sm">Mi Perfil</p>
             </button>
 
             <button
               onClick={() => goTo('/privacidad')}
-              className="w-full flex items-center gap-4 p-4 mt-2 bg-gray-50 rounded-2xl active:scale-95 transition-all border border-gray-100"
+              className="w-full flex items-center gap-4 p-4 mt-2 bg-gray-50 dark:bg-gray-800 rounded-2xl active:scale-95 transition-all border border-gray-100 dark:border-gray-700"
             >
               <ShieldCheckIcon className="w-6 h-6 text-gray-500" />
-              <p className="font-bold text-gray-700 text-sm">Políticas de privacidad</p>
+              <p className="font-bold text-gray-700 dark:text-gray-200 text-sm">Políticas de privacidad</p>
+            </button>
+
+            {/* Toggle modo oscuro */}
+            <button
+              onClick={toggleDarkMode}
+              className="w-full flex items-center justify-between gap-4 p-4 mt-2 bg-gray-50 dark:bg-gray-800 rounded-2xl active:scale-95 transition-all border border-gray-100 dark:border-gray-700"
+            >
+              <div className="flex items-center gap-4">
+                {darkMode
+                  ? <SunIcon  className="w-6 h-6 text-yellow-500" />
+                  : <MoonIcon className="w-6 h-6 text-gray-500" />
+                }
+                <p className="font-bold text-gray-700 dark:text-gray-200 text-sm">
+                  {darkMode ? 'Modo claro' : 'Modo oscuro'}
+                </p>
+              </div>
+              {/* Switch visual */}
+              <div className={`w-12 h-6 rounded-full transition-colors relative ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${darkMode ? 'left-7' : 'left-1'}`} />
+              </div>
             </button>
           </div>
         </div>
 
         {/* Logout */}
-        <div className="p-4 border-t border-gray-100">
+        <div className="p-4 border-t border-gray-100 dark:border-gray-800">
           <button
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 p-4 bg-red-500 text-white font-black rounded-2xl active:bg-red-600 transition-colors"
@@ -229,4 +212,4 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
       </div>
     </div>
   );
-}
+        }
