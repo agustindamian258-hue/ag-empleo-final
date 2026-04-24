@@ -3,17 +3,18 @@ import { useState, useEffect, useRef } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  doc, updateDoc, arrayUnion, arrayRemove, serverTimestamp,
+  doc, updateDoc, serverTimestamp, getDoc,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
-  HeartIcon, PlusIcon, XMarkIcon, ArrowUpTrayIcon,
+  PlusIcon, XMarkIcon, ArrowUpTrayIcon,
   ExclamationCircleIcon, ChatBubbleOvalLeftIcon,
-  ShareIcon, PaperAirplaneIcon,
+  ShareIcon, PaperAirplaneIcon, FaceSmileIcon,
 } from '@heroicons/react/24/outline';
-import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import Navbar from '../components/Navbar';
 import Menu  from '../components/Menu';
+
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Reel {
   id:        string;
@@ -22,7 +23,7 @@ interface Reel {
   userId:    string;
   userName:  string;
   userPhoto: string;
-  likes:     string[];
+  reactions: Record<string, string>;
   createdAt: { toDate: () => Date } | null;
 }
 
@@ -36,10 +37,59 @@ interface Comment {
 }
 
 const MAX_VIDEO_MB = 100;
+const REACCIONES   = ['❤️', '😂', '😍', '👍', '😲'];
+
+// ─── Notificación automática ──────────────────────────────────────────────────
+
+async function crearNotificacion({ uid, titulo, mensaje, tipo }: {
+  uid: string; titulo: string; mensaje: string; tipo: string;
+}) {
+  if (!uid || uid === auth.currentUser?.uid) return;
+  try {
+    await addDoc(collection(db, 'notifications'), {
+      uid, titulo, mensaje, tipo, leida: false, creadoEn: serverTimestamp(),
+    });
+  } catch (e) { console.error('[Notif]', e); }
+}
+
+// ─── Selector de reacción ─────────────────────────────────────────────────────
+
+function SelectorReaccionReel({ onSelect }: { onSelect: (emoji: string) => void }) {
+  const [custom, setCustom] = useState(false);
+  const [input,  setInput]  = useState('');
+  return (
+    <div className="absolute bottom-12 right-0 z-20 bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-2 flex items-center gap-1">
+      {REACCIONES.map((e) => (
+        <button key={e} onClick={() => onSelect(e)} className="text-2xl active:scale-125 transition-transform">
+          {e}
+        </button>
+      ))}
+      {custom ? (
+        <input
+          autoFocus
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && input.trim()) { onSelect(input.trim()); setInput(''); setCustom(false); }
+          }}
+          placeholder="😀"
+          className="w-10 h-8 text-center text-lg bg-gray-700 rounded-xl focus:outline-none text-white"
+          maxLength={2}
+        />
+      ) : (
+        <button onClick={() => setCustom(true)} className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+          <FaceSmileIcon className="w-5 h-5 text-gray-300" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 // ─── Modal comentarios ────────────────────────────────────────────────────────
 
-function ModalComentariosReel({ reelId, onClose }: { reelId: string; onClose: () => void }) {
+function ModalComentariosReel({ reelId, reelUserId, onClose }: {
+  reelId: string; reelUserId: string; onClose: () => void;
+}) {
   const user = auth.currentUser;
   const [comments, setComments] = useState<Comment[]>([]);
   const [texto,    setTexto]    = useState('');
@@ -67,8 +117,14 @@ function ModalComentariosReel({ reelId, onClose }: { reelId: string; onClose: ()
         userPhoto: user.photoURL    ?? '',
         createdAt: serverTimestamp(),
       });
+      await crearNotificacion({
+        uid:     reelUserId,
+        titulo:  `💬 ${user.displayName ?? 'Alguien'} comentó tu reel`,
+        mensaje: texto.trim().slice(0, 80),
+        tipo:    'like',
+      });
       setTexto('');
-    } catch (e) { console.error('[Reels] Comentar error:', e); }
+    } catch (e) { console.error('[Reels] comentar:', e); }
     finally { setEnviando(false); }
   }
 
@@ -114,11 +170,8 @@ function ModalComentariosReel({ reelId, onClose }: { reelId: string; onClose: ()
 
         {user && (
           <div className="px-4 py-3 border-t border-gray-800 flex gap-3 items-center">
-            <img
-              src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
-              alt=""
-              className="w-8 h-8 rounded-full object-cover shrink-0"
-            />
+            <img src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
+              alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
             <input
               ref={inputRef}
               value={texto}
@@ -142,7 +195,8 @@ function ModalComentariosReel({ reelId, onClose }: { reelId: string; onClose: ()
   );
 }
 
-// Contador comentarios reel
+// ─── Contador comentarios ─────────────────────────────────────────────────────
+
 function ComentariosCountReel({ reelId }: { reelId: string }) {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -157,16 +211,18 @@ function ComentariosCountReel({ reelId }: { reelId: string }) {
 export default function Reels() {
   const user = auth.currentUser;
 
-  const [reels,        setReels]        = useState<Reel[]>([]);
-  const [isMenuOpen,   setIsMenuOpen]   = useState(false);
-  const [modalSubir,   setModalSubir]   = useState(false);
-  const [comentandoId, setComentandoId] = useState<string | null>(null);
-  const [caption,      setCaption]      = useState('');
-  const [file,         setFile]         = useState<File | null>(null);
-  const [preview,      setPreview]      = useState<string | null>(null);
-  const [subiendo,     setSubiendo]     = useState(false);
-  const [progreso,     setProgreso]     = useState(0);
-  const [error,        setError]        = useState('');
+  const [reels,          setReels]          = useState<Reel[]>([]);
+  const [isMenuOpen,     setIsMenuOpen]     = useState(false);
+  const [modalSubir,     setModalSubir]     = useState(false);
+  const [comentandoId,   setComentandoId]   = useState<string | null>(null);
+  const [comentandoUid,  setComentandoUid]  = useState('');
+  const [reaccionandoId, setReaccionandoId] = useState<string | null>(null);
+  const [caption,        setCaption]        = useState('');
+  const [file,           setFile]           = useState<File | null>(null);
+  const [preview,        setPreview]        = useState<string | null>(null);
+  const [subiendo,       setSubiendo]       = useState(false);
+  const [progreso,       setProgreso]       = useState(0);
+  const [error,          setError]          = useState('');
   const previewRef = useRef<string | null>(null);
   const videoRefs  = useRef<(HTMLVideoElement | null)[]>([]);
 
@@ -220,28 +276,39 @@ export default function Reels() {
       await addDoc(collection(db, 'reels'), {
         videoUrl, caption: caption.trim(),
         userId: user.uid, userName: user.displayName ?? 'Usuario',
-        userPhoto: user.photoURL ?? '', likes: [], createdAt: serverTimestamp(),
+        userPhoto: user.photoURL ?? '', reactions: {}, createdAt: serverTimestamp(),
       });
       setProgreso(100);
       setCaption(''); setFile(null); setPreview(null);
       if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; }
       setModalSubir(false);
     } catch (e) {
-      console.error('[Reels] Error al subir:', e);
+      console.error('[Reels] subir:', e);
       setError('No se pudo subir el video.');
     } finally { setSubiendo(false); setProgreso(0); }
   };
 
-  const handleLike = async (reelId: string, likes: string[]) => {
+  const handleReaccion = async (reelId: string, reelUserId: string, emoji: string) => {
     if (!user) return;
-    const r = doc(db, 'reels', reelId);
+    setReaccionandoId(null);
+    const reelRef = doc(db, 'reels', reelId);
     try {
-      if (likes.includes(user.uid)) {
-        await updateDoc(r, { likes: arrayRemove(user.uid) });
+      const snap = await getDoc(reelRef);
+      const reactions: Record<string, string> = snap.data()?.reactions || {};
+      if (reactions[user.uid] === emoji) {
+        const updated = { ...reactions };
+        delete updated[user.uid];
+        await updateDoc(reelRef, { reactions: updated });
       } else {
-        await updateDoc(r, { likes: arrayUnion(user.uid) });
+        await updateDoc(reelRef, { [`reactions.${user.uid}`]: emoji });
+        await crearNotificacion({
+          uid:     reelUserId,
+          titulo:  `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu reel`,
+          mensaje: emoji,
+          tipo:    'like',
+        });
       }
-    } catch (e) { console.error('[Reels] Like error:', e); }
+    } catch (e) { console.error('[Reels] reacción:', e); }
   };
 
   const handleCompartir = (reel: Reel) => {
@@ -259,10 +326,7 @@ export default function Reels() {
       <header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-5 py-4 bg-gradient-to-b from-black/80 to-transparent">
         <h1 className="text-xl font-black text-white tracking-tighter">Reels</h1>
         {user && (
-          <button
-            onClick={() => setModalSubir(true)}
-            className="w-9 h-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center active:scale-90 transition-transform"
-          >
+          <button onClick={() => setModalSubir(true)} className="w-9 h-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center active:scale-90 transition-transform">
             <PlusIcon className="w-5 h-5 text-white" />
           </button>
         )}
@@ -278,8 +342,10 @@ export default function Reels() {
         )}
 
         {reels.map((r, i) => {
-          const liked          = r.likes?.includes(user?.uid ?? '');
+          const miReaccion    = r.reactions?.[user?.uid ?? ''];
+          const totalReacc    = Object.keys(r.reactions || {}).length;
           const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(r.userName || 'U')}&background=7c3aed&color=fff`;
+
           return (
             <div key={r.id} className="relative h-screen w-full snap-start snap-always flex items-center justify-center bg-black">
 
@@ -289,7 +355,6 @@ export default function Reels() {
                 loop muted playsInline
                 className="w-full h-full object-cover"
               />
-
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
 
               {/* Info usuario */}
@@ -298,29 +363,29 @@ export default function Reels() {
                   <img src={r.userPhoto || avatarFallback} alt={r.userName} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
                   <span className="font-black text-sm drop-shadow">{r.userName}</span>
                 </div>
-                {r.caption && (
-                  <p className="text-sm leading-snug text-white/90 drop-shadow line-clamp-2">{r.caption}</p>
-                )}
+                {r.caption && <p className="text-sm leading-snug text-white/90 drop-shadow line-clamp-2">{r.caption}</p>}
               </div>
 
               {/* Acciones derecha */}
               <div className="absolute right-4 bottom-32 flex flex-col items-center gap-6">
 
-                {/* Like */}
-                <button
-                  onClick={() => handleLike(r.id, r.likes || [])}
-                  className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
-                >
-                  {liked
-                    ? <HeartSolid className="w-8 h-8 text-red-500 drop-shadow" />
-                    : <HeartIcon   className="w-8 h-8 text-white  drop-shadow" />
-                  }
-                  <span className="text-white text-xs font-bold drop-shadow">{r.likes?.length || 0}</span>
-                </button>
+                {/* Reacción */}
+                <div className="relative flex flex-col items-center gap-1">
+                  <button
+                    onClick={() => setReaccionandoId(reaccionandoId === r.id ? null : r.id)}
+                    className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
+                  >
+                    <span className="text-3xl drop-shadow">{miReaccion || '🤍'}</span>
+                    <span className="text-white text-xs font-bold drop-shadow">{totalReacc}</span>
+                  </button>
+                  {reaccionandoId === r.id && (
+                    <SelectorReaccionReel onSelect={(emoji) => handleReaccion(r.id, r.userId, emoji)} />
+                  )}
+                </div>
 
                 {/* Comentar */}
                 <button
-                  onClick={() => setComentandoId(r.id)}
+                  onClick={() => { setComentandoId(r.id); setComentandoUid(r.userId); }}
                   className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
                 >
                   <ChatBubbleOvalLeftIcon className="w-8 h-8 text-white drop-shadow" />
@@ -340,7 +405,7 @@ export default function Reels() {
         })}
       </div>
 
-      {/* Modal subir reel */}
+      {/* Modal subir */}
       {modalSubir && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
@@ -353,24 +418,19 @@ export default function Reels() {
                 <XMarkIcon className="w-5 h-5 text-gray-400" />
               </button>
             </div>
-
             {preview ? (
               <div className="relative rounded-2xl overflow-hidden bg-black max-h-64">
                 <video src={preview} className="w-full h-full object-cover" controls />
-                <button
-                  onClick={() => { setFile(null); setPreview(null); }}
-                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
-                >✕</button>
+                <button onClick={() => { setFile(null); setPreview(null); }} className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold">✕</button>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-gray-700 rounded-2xl py-10 cursor-pointer active:scale-95 transition-transform">
+              <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-gray-700 rounded-2xl py-10 cursor-pointer">
                 <ArrowUpTrayIcon className="w-10 h-10 text-gray-500" />
                 <span className="text-gray-400 text-sm font-bold">Tocá para seleccionar un video</span>
                 <span className="text-gray-600 text-xs">Máximo {MAX_VIDEO_MB}MB</span>
                 <input type="file" accept="video/*" onChange={handleFile} className="hidden" />
               </label>
             )}
-
             <input
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
@@ -378,19 +438,16 @@ export default function Reels() {
               maxLength={200}
               className="w-full px-4 py-3 rounded-2xl bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
-
             {subiendo && (
               <div className="w-full bg-gray-800 rounded-full h-2">
                 <div className="bg-purple-500 h-2 rounded-full transition-all" style={{ width: `${progreso}%` }} />
               </div>
             )}
-
             {error && (
               <p className="text-red-400 text-xs flex items-center gap-1">
                 <ExclamationCircleIcon className="w-4 h-4 shrink-0" />{error}
               </p>
             )}
-
             <button
               onClick={handleSubir}
               disabled={!file || subiendo}
@@ -406,12 +463,18 @@ export default function Reels() {
       {comentandoId && (
         <ModalComentariosReel
           reelId={comentandoId}
-          onClose={() => setComentandoId(null)}
+          reelUserId={comentandoUid}
+          onClose={() => { setComentandoId(null); setComentandoUid(''); }}
         />
+      )}
+
+      {/* Cerrar selector reacción */}
+      {reaccionandoId && (
+        <div className="fixed inset-0 z-10" onClick={() => setReaccionandoId(null)} />
       )}
 
       <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-    }
+                  }
