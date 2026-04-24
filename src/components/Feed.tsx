@@ -3,15 +3,15 @@ import { useState, useEffect, useRef } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  doc, updateDoc, arrayUnion, arrayRemove, serverTimestamp,
+  doc, updateDoc, serverTimestamp, getDoc,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
-  HeartIcon, PhotoIcon, PaperAirplaneIcon,
-  ExclamationCircleIcon, ChatBubbleOvalLeftIcon,
-  ShareIcon, XMarkIcon,
+  PhotoIcon, PaperAirplaneIcon, ExclamationCircleIcon,
+  ChatBubbleOvalLeftIcon, ShareIcon, XMarkIcon, FaceSmileIcon,
 } from '@heroicons/react/24/outline';
-import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
+
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Post {
   id:        string;
@@ -21,7 +21,7 @@ interface Post {
   userId:    string;
   userName:  string;
   userPhoto: string;
-  likes:     string[];
+  reactions: Record<string, string>;
   createdAt: { toDate: () => Date } | null;
 }
 
@@ -39,9 +39,12 @@ interface FeedProps {
   onPublished?: () => void;
 }
 
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
 const MAX_FILE_SIZE_MB = 50;
 const MAX_TEXT_LENGTH  = 500;
 const ALLOWED_TYPES    = ['image/', 'video/'];
+const REACCIONES       = ['❤️', '😂', '😍', '👍', '😲'];
 
 function sanitizeText(input: string): string {
   return input.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
@@ -54,19 +57,31 @@ function formatFecha(createdAt: Post['createdAt']): string {
   });
 }
 
-// ─── Modal de comentarios ─────────────────────────────────────────────────────
+// ─── Notificación automática ──────────────────────────────────────────────────
 
-function ModalComentarios({
-  postId,
-  onClose,
+async function crearNotificacion({
+  uid, titulo, mensaje, tipo,
 }: {
-  postId: string;
-  onClose: () => void;
+  uid: string; titulo: string; mensaje: string; tipo: string;
+}) {
+  if (!uid || uid === auth.currentUser?.uid) return;
+  try {
+    await addDoc(collection(db, 'notifications'), {
+      uid, titulo, mensaje, tipo,
+      leida: false, creadoEn: serverTimestamp(),
+    });
+  } catch (e) { console.error('[Notif]', e); }
+}
+
+// ─── Modal comentarios ────────────────────────────────────────────────────────
+
+function ModalComentarios({ postId, postUserId, onClose }: {
+  postId: string; postUserId: string; onClose: () => void;
 }) {
   const user = auth.currentUser;
-  const [comments,  setComments]  = useState<Comment[]>([]);
-  const [texto,     setTexto]     = useState('');
-  const [enviando,  setEnviando]  = useState(false);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [texto,    setTexto]    = useState('');
+  const [enviando, setEnviando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -80,9 +95,7 @@ function ModalComentarios({
     return () => unsub();
   }, [postId]);
 
-  useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 300);
-  }, []);
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 300); }, []);
 
   async function handleEnviar() {
     if (!user || !texto.trim()) return;
@@ -95,12 +108,15 @@ function ModalComentarios({
         userPhoto: user.photoURL    ?? '',
         createdAt: serverTimestamp(),
       });
+      await crearNotificacion({
+        uid:     postUserId,
+        titulo:  `💬 ${user.displayName ?? 'Alguien'} comentó tu publicación`,
+        mensaje: texto.trim().slice(0, 80),
+        tipo:    'like',
+      });
       setTexto('');
-    } catch (e) {
-      console.error('[Feed] Error al comentar:', e);
-    } finally {
-      setEnviando(false);
-    }
+    } catch (e) { console.error('[Feed] comentar:', e); }
+    finally { setEnviando(false); }
   }
 
   return (
@@ -108,23 +124,19 @@ function ModalComentarios({
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl flex flex-col animate-slide-up"
+      <div
+        className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl flex flex-col animate-slide-up"
         style={{ maxHeight: '80vh' }}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <h3 className="font-black text-gray-800 dark:text-gray-100">
             Comentarios {comments.length > 0 && <span className="text-gray-400 font-normal text-sm">({comments.length})</span>}
           </h3>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center"
-          >
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
             <XMarkIcon className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
-        {/* Lista */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
           {comments.length === 0 && (
             <div className="text-center py-10 text-gray-400 dark:text-gray-600">
@@ -147,13 +159,11 @@ function ModalComentarios({
           })}
         </div>
 
-        {/* Input */}
         {user && (
           <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex gap-3 items-center">
             <img
               src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
-              alt={user.displayName || ''}
-              className="w-8 h-8 rounded-full object-cover shrink-0"
+              alt="" className="w-8 h-8 rounded-full object-cover shrink-0"
             />
             <input
               ref={inputRef}
@@ -178,18 +188,95 @@ function ModalComentarios({
   );
 }
 
+// ─── Selector de reacción ─────────────────────────────────────────────────────
+
+function SelectorReaccion({ onSelect }: { onSelect: (emoji: string) => void }) {
+  const [custom, setCustom] = useState(false);
+  const [input,  setInput]  = useState('');
+
+  return (
+    <div className="absolute bottom-10 left-0 z-20 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-2 flex items-center gap-1 animate-slide-up">
+      {REACCIONES.map((e) => (
+        <button
+          key={e}
+          onClick={() => onSelect(e)}
+          className="text-2xl active:scale-125 transition-transform hover:scale-110"
+        >
+          {e}
+        </button>
+      ))}
+      {custom ? (
+        <input
+          autoFocus
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && input.trim()) { onSelect(input.trim()); setInput(''); setCustom(false); }
+          }}
+          placeholder="😀"
+          className="w-10 h-8 text-center text-lg bg-gray-100 dark:bg-gray-700 rounded-xl focus:outline-none"
+          maxLength={2}
+        />
+      ) : (
+        <button
+          onClick={() => setCustom(true)}
+          className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 hover:scale-110 transition-transform"
+        >
+          <FaceSmileIcon className="w-5 h-5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Contador reacciones ──────────────────────────────────────────────────────
+
+function ResumenReacciones({ reactions }: { reactions: Record<string, string> }) {
+  const conteo = Object.values(reactions || {}).reduce<Record<string, number>>((acc, e) => {
+    acc[e] = (acc[e] || 0) + 1;
+    return acc;
+  }, {});
+  const top = Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  if (top.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1 px-4 pb-2">
+      <div className="flex -space-x-1">
+        {top.map(([emoji]) => (
+          <span key={emoji} className="text-base">{emoji}</span>
+        ))}
+      </div>
+      <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">
+        {Object.keys(reactions).length}
+      </span>
+    </div>
+  );
+}
+
+// ─── Contador comentarios ─────────────────────────────────────────────────────
+
+function ComentariosCount({ postId }: { postId: string }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'posts', postId, 'comments'), (s) => setCount(s.size));
+    return () => unsub();
+  }, [postId]);
+  return <span className="text-sm font-bold">{count}</span>;
+}
+
 // ─── Feed principal ───────────────────────────────────────────────────────────
 
 export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const user = auth.currentUser;
 
-  const [posts,       setPosts]       = useState<Post[]>([]);
-  const [text,        setText]        = useState('');
-  const [file,        setFile]        = useState<File | null>(null);
-  const [preview,     setPreview]     = useState<string | null>(null);
-  const [publicando,  setPublicando]  = useState(false);
-  const [error,       setError]       = useState('');
-  const [comentandoId, setComentandoId] = useState<string | null>(null);
+  const [posts,         setPosts]         = useState<Post[]>([]);
+  const [text,          setText]          = useState('');
+  const [file,          setFile]          = useState<File | null>(null);
+  const [preview,       setPreview]       = useState<string | null>(null);
+  const [publicando,    setPublicando]    = useState(false);
+  const [error,         setError]         = useState('');
+  const [comentandoId,  setComentandoId]  = useState<string | null>(null);
+  const [comentandoUid, setComentandoUid] = useState<string>('');
+  const [reaccionandoId, setReaccionandoId] = useState<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -214,16 +301,14 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     const url = URL.createObjectURL(f);
     previewUrlRef.current = url;
-    setFile(f);
-    setPreview(url);
+    setFile(f); setPreview(url);
   };
 
   const handlePost = async () => {
     if (!user) return;
     const textSanitizado = sanitizeText(text);
     if (!textSanitizado && !file) return;
-    setPublicando(true);
-    setError('');
+    setPublicando(true); setError('');
     try {
       let mediaUrl  = '';
       let mediaType: 'image' | 'video' | '' = '';
@@ -236,36 +321,44 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       await addDoc(collection(db, 'posts'), {
         text: textSanitizado, mediaUrl, mediaType,
         userId: user.uid, userName: user.displayName ?? 'Usuario',
-        userPhoto: user.photoURL ?? '', likes: [], createdAt: serverTimestamp(),
+        userPhoto: user.photoURL ?? '', reactions: {}, createdAt: serverTimestamp(),
       });
       setText(''); setFile(null); setPreview(null);
       if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; }
       if (onPublished) onPublished();
     } catch (e) {
-      console.error('[Feed] Error al publicar:', e);
+      console.error('[Feed] publicar:', e);
       setError('No se pudo publicar. Intentá de nuevo.');
-    } finally {
-      setPublicando(false);
-    }
+    } finally { setPublicando(false); }
   };
 
-  const handleLike = async (postId: string, likes: string[]) => {
+  const handleReaccion = async (postId: string, postUserId: string, emoji: string) => {
     if (!user) return;
+    setReaccionandoId(null);
     const postRef = doc(db, 'posts', postId);
     try {
-      if (likes.includes(user.uid)) {
-        await updateDoc(postRef, { likes: arrayRemove(user.uid) });
+      const snap = await getDoc(postRef);
+      const reactions: Record<string, string> = snap.data()?.reactions || {};
+      if (reactions[user.uid] === emoji) {
+        const updated = { ...reactions };
+        delete updated[user.uid];
+        await updateDoc(postRef, { reactions: updated });
       } else {
-        await updateDoc(postRef, { likes: arrayUnion(user.uid) });
+        await updateDoc(postRef, { [`reactions.${user.uid}`]: emoji });
+        await crearNotificacion({
+          uid:     postUserId,
+          titulo:  `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu publicación`,
+          mensaje: emoji,
+          tipo:    'like',
+        });
       }
-    } catch (e) { console.error('[Feed] Like error:', e); }
+    } catch (e) { console.error('[Feed] reacción:', e); }
   };
 
   const handleCompartir = (post: Post) => {
     const texto = post.text || 'Mirá esta publicación en AG Empleo';
     if (navigator.share) {
-      navigator.share({ title: 'AG Empleo', text: texto, url: window.location.href })
-        .catch(() => {});
+      navigator.share({ title: 'AG Empleo', text: texto, url: window.location.href }).catch(() => {});
     } else {
       navigator.clipboard.writeText(window.location.href).catch(() => {});
     }
@@ -285,7 +378,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
             />
             <span className="font-bold text-gray-800 dark:text-gray-100 text-sm">{user.displayName}</span>
           </div>
-
           <textarea
             value={text}
             onChange={(e) => { if (e.target.value.length <= MAX_TEXT_LENGTH) setText(e.target.value); }}
@@ -293,13 +385,11 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
             className="w-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 rounded-2xl p-3 text-sm resize-none focus:outline-none focus:border-purple-400 h-24"
             maxLength={MAX_TEXT_LENGTH}
           />
-
           <div className="flex justify-end">
             <span className={`text-xs ${text.length >= MAX_TEXT_LENGTH ? 'text-red-400' : 'text-gray-300 dark:text-gray-600'}`}>
               {text.length}/{MAX_TEXT_LENGTH}
             </span>
           </div>
-
           {preview && (
             <div className="relative">
               <img src={preview} alt="Vista previa" className="rounded-2xl w-full object-cover max-h-48" />
@@ -309,13 +399,11 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
               >✕</button>
             </div>
           )}
-
           {error && (
             <div className="flex items-center gap-2 text-red-500 text-xs" role="alert">
               <ExclamationCircleIcon className="w-4 h-4 shrink-0" />{error}
             </div>
           )}
-
           <div className="flex justify-between items-center pt-1 border-t border-gray-100 dark:border-gray-800">
             <label className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
               <PhotoIcon className="w-5 h-5 text-purple-400" />
@@ -336,8 +424,9 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
 
       {/* Posts */}
       {posts.map((p) => {
-        const liked          = p.likes?.includes(user?.uid ?? '');
+        const miReaccion = p.reactions?.[user?.uid ?? ''];
         const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(p.userName || 'U')}&background=7c3aed&color=fff`;
+
         return (
           <article key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
 
@@ -360,29 +449,37 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
                 : <img src={p.mediaUrl} alt="Imagen del post" className="w-full max-h-80 object-cover" loading="lazy" />
             )}
 
+            {/* Resumen reacciones */}
+            <ResumenReacciones reactions={p.reactions || {}} />
+
             {/* Acciones */}
             <div className="px-4 py-3 flex items-center gap-5 border-t border-gray-100 dark:border-gray-800">
 
-              {/* Like */}
-              <button
-                onClick={() => handleLike(p.id, p.likes || [])}
-                className="flex items-center gap-1.5 active:scale-90 transition-transform"
-                aria-label={liked ? 'Quitar like' : 'Dar like'}
-              >
-                {liked
-                  ? <HeartSolid className="w-6 h-6 text-red-500" />
-                  : <HeartIcon   className="w-6 h-6 text-gray-400 dark:text-gray-500" />
-                }
-                <span className={`text-sm font-bold ${liked ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
-                  {p.likes?.length || 0}
-                </span>
-              </button>
+              {/* Reacción */}
+              <div className="relative">
+                <button
+                  onClick={() => setReaccionandoId(reaccionandoId === p.id ? null : p.id)}
+                  className="flex items-center gap-1.5 active:scale-90 transition-transform"
+                  aria-label="Reaccionar"
+                >
+                  <span className="text-2xl leading-none">
+                    {miReaccion || '🤍'}
+                  </span>
+                  <span className={`text-sm font-bold ${miReaccion ? 'text-purple-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                    {Object.keys(p.reactions || {}).length || 0}
+                  </span>
+                </button>
+                {reaccionandoId === p.id && (
+                  <SelectorReaccion
+                    onSelect={(emoji) => handleReaccion(p.id, p.userId, emoji)}
+                  />
+                )}
+              </div>
 
               {/* Comentar */}
               <button
-                onClick={() => setComentandoId(p.id)}
+                onClick={() => { setComentandoId(p.id); setComentandoUid(p.userId); }}
                 className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500 active:scale-90 transition-transform"
-                aria-label="Comentar"
               >
                 <ChatBubbleOvalLeftIcon className="w-6 h-6" />
                 <ComentariosCount postId={p.id} />
@@ -392,7 +489,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
               <button
                 onClick={() => handleCompartir(p)}
                 className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500 active:scale-90 transition-transform ml-auto"
-                aria-label="Compartir"
               >
                 <ShareIcon className="w-5 h-5" />
               </button>
@@ -413,20 +509,15 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {comentandoId && (
         <ModalComentarios
           postId={comentandoId}
-          onClose={() => setComentandoId(null)}
+          postUserId={comentandoUid}
+          onClose={() => { setComentandoId(null); setComentandoUid(''); }}
         />
+      )}
+
+      {/* Cerrar selector reacción al tocar afuera */}
+      {reaccionandoId && (
+        <div className="fixed inset-0 z-10" onClick={() => setReaccionandoId(null)} />
       )}
     </div>
   );
-}
-
-// Contador de comentarios en tiempo real
-function ComentariosCount({ postId }: { postId: string }) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    const q = query(collection(db, 'posts', postId, 'comments'));
-    const unsub = onSnapshot(q, (snap) => setCount(snap.size));
-    return () => unsub();
-  }, [postId]);
-  return <span className="text-sm font-bold">{count}</span>;
-            }
+  }
