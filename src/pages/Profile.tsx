@@ -1,17 +1,26 @@
 // src/pages/Profile.tsx
 import { useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../app/firebase';
+import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, db, storage } from '../app/firebase';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import { useTheme, SocialColor } from '../context/ThemeContext';
-import { CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import {
+  CheckCircleIcon, ExclamationCircleIcon,
+  CameraIcon, HeartIcon, DocumentTextIcon,
+} from '@heroicons/react/24/outline';
 
 interface UserForm { name: string; title: string; bio: string; ciudad: string; }
+interface Post {
+  id: string; text: string; mediaUrl: string; mediaType: string;
+  likes: string[]; createdAt: { toDate: () => Date } | null;
+}
 type StatusMsg = { tipo: 'exito' | 'error'; texto: string } | null;
 
-const MAX_BIO = 300;
+const MAX_BIO    = 300;
+const MAX_PHOTO_MB = 5;
 
 const COLORS: { id: SocialColor; bg: string; ring: string }[] = [
   { id: 'blue',   bg: 'bg-blue-500',   ring: 'ring-blue-500'   },
@@ -23,18 +32,21 @@ const COLORS: { id: SocialColor; bg: string; ring: string }[] = [
 ];
 
 export default function Profile() {
-  const { socialColor, setSocialColor, darkMode, toggleDarkMode } = useTheme();
-  const [user,        setUser]        = useState<User | null>(null);
-  const [form,        setForm]        = useState<UserForm>({ name: '', title: '', bio: '', ciudad: '' });
-  const [fotoURL,     setFotoURL]     = useState('');
-  const [guardando,   setGuardando]   = useState(false);
-  const [status,      setStatus]      = useState<StatusMsg>(null);
-  const [menuAbierto, setMenuAbierto] = useState(false);
+  const { socialColor, setSocialColor } = useTheme();
+  const [user,         setUser]         = useState<User | null>(null);
+  const [form,         setForm]         = useState<UserForm>({ name: '', title: '', bio: '', ciudad: '' });
+  const [fotoURL,      setFotoURL]      = useState('');
+  const [guardando,    setGuardando]    = useState(false);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [status,       setStatus]       = useState<StatusMsg>(null);
+  const [menuAbierto,  setMenuAbierto]  = useState(false);
+  const [misPosts,     setMisPosts]     = useState<Post[]>([]);
+  const [totalLikes,   setTotalLikes]   = useState(0);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u) { setFotoURL(u.photoURL || ''); loadProfile(u.uid); }
+      if (u) { setFotoURL(u.photoURL || ''); loadProfile(u.uid); loadMisPosts(u.uid); }
     });
     return () => unsub();
   }, []);
@@ -47,10 +59,37 @@ export default function Profile() {
         setForm({ name: d.name || '', title: d.title || '', bio: d.bio || '', ciudad: d.ciudad || '' });
         if (d.photo) setFotoURL(d.photo);
       }
-    } catch (e) {
-      console.error('[Profile] load:', e);
-    }
+    } catch (e) { console.error('[Profile] load:', e); }
   };
+
+  const loadMisPosts = (uid: string) => {
+    const q = query(collection(db, 'posts'), where('userId', '==', uid));
+    onSnapshot(q, (snap) => {
+      const posts = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
+      setMisPosts(posts);
+      setTotalLikes(posts.reduce((acc, p) => acc + (p.likes?.length || 0), 0));
+    });
+  };
+
+  async function handleFotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f || !user) return;
+    if (!f.type.startsWith('image/')) return;
+    if (f.size > MAX_PHOTO_MB * 1024 * 1024) {
+      setStatus({ tipo: 'error', texto: `La foto no puede superar ${MAX_PHOTO_MB}MB.` }); return;
+    }
+    setSubiendoFoto(true);
+    try {
+      const sRef = storageRef(storage, `avatars/${user.uid}`);
+      await uploadBytes(sRef, f);
+      const url = await getDownloadURL(sRef);
+      setFotoURL(url);
+      await updateDoc(doc(db, 'users', user.uid), { photo: url, updatedAt: serverTimestamp() });
+    } catch (e) {
+      console.error('[Profile] foto upload:', e);
+      setStatus({ tipo: 'error', texto: 'No se pudo subir la foto.' });
+    } finally { setSubiendoFoto(false); }
+  }
 
   const saveProfile = async () => {
     if (!user) return;
@@ -69,7 +108,8 @@ export default function Profile() {
     } finally { setGuardando(false); }
   };
 
-  const avatarUrl = fotoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=3b82f6&color=fff&size=128`;
+  const avatarUrl = fotoURL ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=3b82f6&color=fff&size=128`;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -78,16 +118,47 @@ export default function Profile() {
 
       <div className="max-w-lg mx-auto px-4 pt-6 space-y-4">
 
-        {/* Avatar */}
+        {/* Avatar con upload */}
         <div className="flex flex-col items-center gap-3">
-          <img src={avatarUrl} alt="foto" className="w-24 h-24 rounded-full border-4 border-[--sc-100] object-cover shadow-md" />
+          <div className="relative">
+            <img
+              src={avatarUrl}
+              alt="foto"
+              className="w-24 h-24 rounded-full border-4 border-[--sc-100] object-cover shadow-md"
+            />
+            <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--sc-600)] flex items-center justify-center cursor-pointer ring-2 ring-white dark:ring-gray-950 active:scale-90 transition-transform">
+              {subiendoFoto
+                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                : <CameraIcon className="w-4 h-4 text-white" />
+              }
+              <input type="file" accept="image/*" onChange={handleFotoUpload} className="hidden" disabled={subiendoFoto} />
+            </label>
+          </div>
           <div className="text-center">
             <p className="font-black text-lg text-gray-900 dark:text-white">{form.name || 'Tu nombre'}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{form.title || 'Tu título profesional'}</p>
+            {form.ciudad && <p className="text-xs text-gray-400 dark:text-gray-500">📍 {form.ciudad}</p>}
+          </div>
+
+          {/* Stats */}
+          <div className="flex gap-6 mt-1">
+            <div className="flex flex-col items-center">
+              <span className="font-black text-lg text-gray-900 dark:text-white">{misPosts.length}</span>
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <DocumentTextIcon className="w-3.5 h-3.5" /> Posts
+              </span>
+            </div>
+            <div className="w-px bg-gray-200 dark:bg-gray-700" />
+            <div className="flex flex-col items-center">
+              <span className="font-black text-lg text-gray-900 dark:text-white">{totalLikes}</span>
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <HeartIcon className="w-3.5 h-3.5" /> Likes
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Selector de color zona Social */}
+        {/* Color zona Social */}
         <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
           <h2 className="font-black text-gray-800 dark:text-white text-base mb-3">Color zona Social</h2>
           <div className="flex gap-3 justify-center">
@@ -95,28 +166,11 @@ export default function Profile() {
               <button
                 key={id}
                 onClick={() => setSocialColor(id)}
-                className={`w-9 h-9 rounded-full ${bg} transition-transform active:scale-90 ${
-                  socialColor === id ? `ring-2 ring-offset-2 ${ring}` : ''
-                }`}
+                className={`w-9 h-9 rounded-full ${bg} transition-transform active:scale-90 ${socialColor === id ? `ring-2 ring-offset-2 ${ring}` : ''}`}
                 aria-label={id}
               />
             ))}
           </div>
-        </div>
-
-        {/* Dark mode toggle */}
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 flex items-center justify-between">
-          <div>
-            <p className="font-black text-gray-800 dark:text-white text-sm">Modo oscuro</p>
-            <p className="text-xs text-gray-400">Aplica en toda la app</p>
-          </div>
-          <button
-            onClick={toggleDarkMode}
-            className={`relative w-12 h-6 rounded-full transition-colors ${darkMode ? 'bg-[--sc-500]' : 'bg-gray-200'}`}
-            aria-label="toggle dark mode"
-          >
-            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-0'}`} />
-          </button>
         </div>
 
         {/* Formulario */}
@@ -134,7 +188,7 @@ export default function Profile() {
                 type="text"
                 placeholder={placeholder}
                 value={form[field]}
-                onChange={e => setForm({ ...form, [field]: e.target.value })}
+                onChange={(e) => setForm({ ...form, [field]: e.target.value })}
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300]"
               />
             </div>
@@ -149,7 +203,7 @@ export default function Profile() {
             </label>
             <textarea
               value={form.bio}
-              onChange={e => { if (e.target.value.length <= MAX_BIO) setForm({ ...form, bio: e.target.value }); }}
+              onChange={(e) => { if (e.target.value.length <= MAX_BIO) setForm({ ...form, bio: e.target.value }); }}
               rows={4}
               maxLength={MAX_BIO}
               placeholder="Contá algo sobre vos..."
@@ -158,8 +212,14 @@ export default function Profile() {
           </div>
 
           {status && (
-            <div className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${status.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`} role="alert">
-              {status.tipo === 'exito' ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />}
+            <div
+              className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${status.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}
+              role="alert"
+            >
+              {status.tipo === 'exito'
+                ? <CheckCircleIcon className="w-5 h-5 shrink-0" />
+                : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
+              }
               {status.texto}
             </div>
           )}
@@ -173,21 +233,37 @@ export default function Profile() {
           </button>
         </div>
 
-        {/* Vista previa */}
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
-          <h2 className="font-black text-gray-800 dark:text-white text-base mb-3">Vista previa</h2>
-          <div className="flex items-center gap-3">
-            <img src={avatarUrl} alt="preview" className="w-14 h-14 rounded-full object-cover border-2 border-[--sc-100]" />
-            <div>
-              <p className="font-black text-gray-900 dark:text-white text-sm">{form.name || 'Tu nombre'}</p>
-              <p className="text-xs text-[--sc-600] font-bold">{form.title || 'Tu título'}</p>
-              <p className="text-xs text-gray-400">{form.ciudad}</p>
+        {/* Mis publicaciones */}
+        {misPosts.length > 0 && (
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
+            <h2 className="font-black text-gray-800 dark:text-white text-base mb-3">Mis publicaciones</h2>
+            <div className="grid grid-cols-3 gap-1.5">
+              {misPosts.map((p) => (
+                <div key={p.id} className="aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 relative">
+                  {p.mediaUrl ? (
+                    p.mediaType === 'video' ? (
+                      <video src={p.mediaUrl} className="w-full h-full object-cover" />
+                    ) : (
+                      <img src={p.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    )
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center p-2">
+                      <p className="text-[10px] text-gray-400 text-center line-clamp-4">{p.text}</p>
+                    </div>
+                  )}
+                  {p.likes?.length > 0 && (
+                    <div className="absolute bottom-1 right-1 flex items-center gap-0.5 bg-black/50 rounded-full px-1.5 py-0.5">
+                      <HeartIcon className="w-3 h-3 text-white" />
+                      <span className="text-[9px] text-white font-bold">{p.likes.length}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
-          {form.bio && <p className="text-sm text-gray-600 dark:text-gray-300 mt-3 leading-relaxed">{form.bio}</p>}
-        </div>
+        )}
 
       </div>
     </div>
   );
-    }
+              }
