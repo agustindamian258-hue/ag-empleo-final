@@ -3,18 +3,18 @@ import { useState, useEffect, useRef } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  doc, updateDoc, serverTimestamp, getDoc,
+  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
   PlusIcon, XMarkIcon, ArrowUpTrayIcon,
   ExclamationCircleIcon, ChatBubbleOvalLeftIcon,
   ShareIcon, PaperAirplaneIcon, FaceSmileIcon,
+  HeartIcon as HeartOutline,
 } from '@heroicons/react/24/outline';
+import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import Navbar from '../components/Navbar';
 import Menu  from '../components/Menu';
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Reel {
   id:        string;
@@ -33,13 +33,13 @@ interface Comment {
   userId:    string;
   userName:  string;
   userPhoto: string;
+  likes:     string[];
+  replyTo:   string | null;
   createdAt: { toDate: () => Date } | null;
 }
 
 const MAX_VIDEO_MB = 100;
 const REACCIONES   = ['❤️', '😂', '😍', '👍', '😲'];
-
-// ─── Notificación automática ──────────────────────────────────────────────────
 
 async function crearNotificacion({ uid, titulo, mensaje, tipo }: {
   uid: string; titulo: string; mensaje: string; tipo: string;
@@ -52,7 +52,7 @@ async function crearNotificacion({ uid, titulo, mensaje, tipo }: {
   } catch (e) { console.error('[Notif]', e); }
 }
 
-// ─── Selector de reacción ─────────────────────────────────────────────────────
+// ─── Selector reacción ────────────────────────────────────────────────────────
 
 function SelectorReaccionReel({ onSelect }: { onSelect: (emoji: string) => void }) {
   const [custom, setCustom] = useState(false);
@@ -60,18 +60,13 @@ function SelectorReaccionReel({ onSelect }: { onSelect: (emoji: string) => void 
   return (
     <div className="absolute bottom-12 right-0 z-20 bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-2 flex items-center gap-1">
       {REACCIONES.map((e) => (
-        <button key={e} onClick={() => onSelect(e)} className="text-2xl active:scale-125 transition-transform">
-          {e}
-        </button>
+        <button key={e} onClick={() => onSelect(e)} className="text-2xl active:scale-125 transition-transform">{e}</button>
       ))}
       {custom ? (
         <input
-          autoFocus
-          value={input}
+          autoFocus value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && input.trim()) { onSelect(input.trim()); setInput(''); setCustom(false); }
-          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) { onSelect(input.trim()); setInput(''); setCustom(false); } }}
           placeholder="😀"
           className="w-10 h-8 text-center text-lg bg-gray-700 rounded-xl focus:outline-none text-white"
           maxLength={2}
@@ -85,15 +80,27 @@ function SelectorReaccionReel({ onSelect }: { onSelect: (emoji: string) => void 
   );
 }
 
+// ─── Contador comentarios ─────────────────────────────────────────────────────
+
+function ComentariosCountReel({ reelId }: { reelId: string }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'reels', reelId, 'comments'), (s) => setCount(s.size));
+    return () => unsub();
+  }, [reelId]);
+  return <span className="text-white text-xs font-bold drop-shadow">{count}</span>;
+}
+
 // ─── Modal comentarios ────────────────────────────────────────────────────────
 
 function ModalComentariosReel({ reelId, reelUserId, onClose }: {
   reelId: string; reelUserId: string; onClose: () => void;
 }) {
   const user = auth.currentUser;
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [texto,    setTexto]    = useState('');
-  const [enviando, setEnviando] = useState(false);
+  const [comments,     setComments]     = useState<Comment[]>([]);
+  const [texto,        setTexto]        = useState('');
+  const [enviando,     setEnviando]     = useState(false);
+  const [respondiendo, setRespondiendo] = useState<{ id: string; nombre: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -106,6 +113,31 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
 
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 300); }, []);
 
+  function handleResponder(comment: Comment) {
+    setRespondiendo({ id: comment.id, nombre: comment.userName });
+    setTexto(`@${comment.userName} `);
+    inputRef.current?.focus();
+  }
+
+  async function handleLikeComentario(comment: Comment) {
+    if (!user) return;
+    const ref   = doc(db, 'reels', reelId, 'comments', comment.id);
+    const liked = comment.likes?.includes(user.uid);
+    try {
+      await updateDoc(ref, {
+        likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid),
+      });
+      if (!liked) {
+        await crearNotificacion({
+          uid:     comment.userId,
+          titulo:  `❤️ ${user.displayName ?? 'Alguien'} le gustó tu comentario`,
+          mensaje: comment.text.slice(0, 60),
+          tipo:    'like',
+        });
+      }
+    } catch (e) { console.error('[Reels] like comentario:', e); }
+  }
+
   async function handleEnviar() {
     if (!user || !texto.trim()) return;
     setEnviando(true);
@@ -115,6 +147,8 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
         userId:    user.uid,
         userName:  user.displayName ?? 'Usuario',
         userPhoto: user.photoURL    ?? '',
+        likes:     [],
+        replyTo:   respondiendo?.nombre ?? null,
         createdAt: serverTimestamp(),
       });
       await crearNotificacion({
@@ -124,6 +158,7 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
         tipo:    'like',
       });
       setTexto('');
+      setRespondiendo(null);
     } catch (e) { console.error('[Reels] comentar:', e); }
     finally { setEnviando(false); }
   }
@@ -146,7 +181,7 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {comments.length === 0 && (
             <div className="text-center py-10 text-gray-600">
               <p className="text-3xl mb-2">💬</p>
@@ -154,14 +189,39 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
             </div>
           )}
           {comments.map((c) => {
-            const avatar = c.userPhoto ||
-              `https://ui-avatars.com/api/?name=${encodeURIComponent(c.userName || 'U')}&background=7c3aed&color=fff`;
+            const avatar  = c.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.userName || 'U')}&background=7c3aed&color=fff`;
+            const likedC  = c.likes?.includes(user?.uid ?? '');
             return (
-              <div key={c.id} className="flex gap-3">
+              <div key={c.id} className={`flex gap-3 ${c.replyTo ? 'ml-8' : ''}`}>
                 <img src={avatar} alt={c.userName} className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5" />
-                <div className="flex-1 bg-gray-800 rounded-2xl px-3 py-2">
-                  <p className="font-black text-xs text-white">{c.userName}</p>
-                  <p className="text-sm text-gray-300 leading-snug">{c.text}</p>
+                <div className="flex-1">
+                  <div className="bg-gray-800 rounded-2xl px-3 py-2">
+                    <p className="font-black text-xs text-white">{c.userName}</p>
+                    <p className="text-sm text-gray-300 leading-snug">{c.text}</p>
+                  </div>
+                  {/* Acciones comentario */}
+                  <div className="flex items-center gap-4 mt-1 px-1">
+                    <button
+                      onClick={() => handleLikeComentario(c)}
+                      className="flex items-center gap-1 active:scale-90 transition-transform"
+                    >
+                      {likedC
+                        ? <HeartSolid   className="w-3.5 h-3.5 text-red-500" />
+                        : <HeartOutline className="w-3.5 h-3.5 text-gray-500" />
+                      }
+                      {(c.likes?.length || 0) > 0 && (
+                        <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-500'}`}>
+                          {c.likes?.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleResponder(c)}
+                      className="text-xs text-gray-500 font-bold active:scale-95 transition-transform"
+                    >
+                      Responder
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -169,41 +229,42 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
         </div>
 
         {user && (
-          <div className="px-4 py-3 border-t border-gray-800 flex gap-3 items-center">
-            <img src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
-              alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
-            <input
-              ref={inputRef}
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleEnviar()}
-              placeholder="Escribí un comentario..."
-              maxLength={300}
-              className="flex-1 bg-gray-800 rounded-full px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none"
-            />
-            <button
-              onClick={handleEnviar}
-              disabled={enviando || !texto.trim()}
-              className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center disabled:opacity-40 active:scale-90 transition-transform"
-            >
-              <PaperAirplaneIcon className="w-4 h-4 text-white" />
-            </button>
+          <div className="px-4 py-3 border-t border-gray-800 space-y-2">
+            {respondiendo && (
+              <div className="flex items-center justify-between bg-purple-900/30 rounded-xl px-3 py-1.5">
+                <span className="text-xs text-purple-400 font-bold">
+                  Respondiendo a @{respondiendo.nombre}
+                </span>
+                <button onClick={() => { setRespondiendo(null); setTexto(''); }} className="text-purple-400 text-xs">✕</button>
+              </div>
+            )}
+            <div className="flex gap-3 items-center">
+              <img
+                src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
+                alt="" className="w-8 h-8 rounded-full object-cover shrink-0"
+              />
+              <input
+                ref={inputRef}
+                value={texto}
+                onChange={(e) => setTexto(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleEnviar()}
+                placeholder={respondiendo ? `Responder a @${respondiendo.nombre}...` : 'Escribí un comentario...'}
+                maxLength={300}
+                className="flex-1 bg-gray-800 rounded-full px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none"
+              />
+              <button
+                onClick={handleEnviar}
+                disabled={enviando || !texto.trim()}
+                className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center disabled:opacity-40 active:scale-90 transition-transform"
+              >
+                <PaperAirplaneIcon className="w-4 h-4 text-white" />
+              </button>
+            </div>
           </div>
         )}
       </div>
     </div>
   );
-}
-
-// ─── Contador comentarios ─────────────────────────────────────────────────────
-
-function ComentariosCountReel({ reelId }: { reelId: string }) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'reels', reelId, 'comments'), (s) => setCount(s.size));
-    return () => unsub();
-  }, [reelId]);
-  return <span className="text-white text-xs font-bold drop-shadow">{count}</span>;
 }
 
 // ─── Reels principal ──────────────────────────────────────────────────────────
@@ -296,16 +357,14 @@ export default function Reels() {
       const snap = await getDoc(reelRef);
       const reactions: Record<string, string> = snap.data()?.reactions || {};
       if (reactions[user.uid] === emoji) {
-        const updated = { ...reactions };
-        delete updated[user.uid];
+        const updated = { ...reactions }; delete updated[user.uid];
         await updateDoc(reelRef, { reactions: updated });
       } else {
         await updateDoc(reelRef, { [`reactions.${user.uid}`]: emoji });
         await crearNotificacion({
-          uid:     reelUserId,
-          titulo:  `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu reel`,
-          mensaje: emoji,
-          tipo:    'like',
+          uid: reelUserId,
+          titulo: `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu reel`,
+          mensaje: emoji, tipo: 'like',
         });
       }
     } catch (e) { console.error('[Reels] reacción:', e); }
@@ -342,13 +401,12 @@ export default function Reels() {
         )}
 
         {reels.map((r, i) => {
-          const miReaccion    = r.reactions?.[user?.uid ?? ''];
-          const totalReacc    = Object.keys(r.reactions || {}).length;
+          const miReaccion     = r.reactions?.[user?.uid ?? ''];
+          const totalReacc     = Object.keys(r.reactions || {}).length;
           const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(r.userName || 'U')}&background=7c3aed&color=fff`;
 
           return (
             <div key={r.id} className="relative h-screen w-full snap-start snap-always flex items-center justify-center bg-black">
-
               <video
                 ref={(el) => { videoRefs.current[i] = el; }}
                 src={r.videoUrl}
@@ -357,7 +415,6 @@ export default function Reels() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
 
-              {/* Info usuario */}
               <div className="absolute bottom-24 left-4 right-16 text-white">
                 <div className="flex items-center gap-2 mb-2">
                   <img src={r.userPhoto || avatarFallback} alt={r.userName} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
@@ -366,9 +423,7 @@ export default function Reels() {
                 {r.caption && <p className="text-sm leading-snug text-white/90 drop-shadow line-clamp-2">{r.caption}</p>}
               </div>
 
-              {/* Acciones derecha */}
               <div className="absolute right-4 bottom-32 flex flex-col items-center gap-6">
-
                 {/* Reacción */}
                 <div className="relative flex flex-col items-center gap-1">
                   <button
@@ -459,7 +514,6 @@ export default function Reels() {
         </div>
       )}
 
-      {/* Modal comentarios */}
       {comentandoId && (
         <ModalComentariosReel
           reelId={comentandoId}
@@ -468,13 +522,10 @@ export default function Reels() {
         />
       )}
 
-      {/* Cerrar selector reacción */}
-      {reaccionandoId && (
-        <div className="fixed inset-0 z-10" onClick={() => setReaccionandoId(null)} />
-      )}
+      {reaccionandoId && <div className="fixed inset-0 z-10" onClick={() => setReaccionandoId(null)} />}
 
       <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-                  }
+  }
