@@ -9,6 +9,8 @@ import Feed          from '../pages/Feed';
 import Reels         from '../pages/Reels';
 import Login         from '../pages/Login';
 import Profile       from '../pages/Profile';
+import UserProfile   from '../pages/UserProfile';
+import SearchUsers   from '../pages/SearchUsers';
 import MapPage       from '../pages/MapPage';
 import Privacidad    from '../pages/Privacidad';
 import Notifications from '../pages/Notifications';
@@ -50,6 +52,8 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
         <Route path="/social"         element={PR(<Feed />)}          />
         <Route path="/reels"          element={PR(<Reels />)}         />
         <Route path="/profile"        element={PR(<Profile />)}       />
+        <Route path="/user/:uid"      element={PR(<UserProfile />)}   />
+        <Route path="/search"         element={PR(<SearchUsers />)}   />
         <Route path="/privacidad"     element={PR(<Privacidad />)}    />
         <Route path="/notificaciones" element={PR(<Notifications />)} />
 
