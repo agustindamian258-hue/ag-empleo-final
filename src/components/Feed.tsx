@@ -3,13 +3,14 @@ import { useState, useEffect, useRef } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove,
+  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { useNavigate } from 'react-router-dom';
 import {
   PhotoIcon, PaperAirplaneIcon, ExclamationCircleIcon,
   ChatBubbleOvalLeftIcon, ShareIcon, XMarkIcon, FaceSmileIcon,
-  HeartIcon as HeartOutline,
+  HeartIcon as HeartOutline, TrashIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 
@@ -32,6 +33,7 @@ interface Comment {
   userName:  string;
   userPhoto: string;
   likes:     string[];
+  replyTo:   string | null;
   createdAt: { toDate: () => Date } | null;
 }
 
@@ -124,9 +126,9 @@ function ModalComentarios({ postId, postUserId, onClose }: {
   postId: string; postUserId: string; onClose: () => void;
 }) {
   const user = auth.currentUser;
-  const [comments,    setComments]    = useState<Comment[]>([]);
-  const [texto,       setTexto]       = useState('');
-  const [enviando,    setEnviando]    = useState(false);
+  const [comments,     setComments]     = useState<Comment[]>([]);
+  const [texto,        setTexto]        = useState('');
+  const [enviando,     setEnviando]     = useState(false);
   const [respondiendo, setRespondiendo] = useState<{ id: string; nombre: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -148,20 +150,15 @@ function ModalComentarios({ postId, postUserId, onClose }: {
 
   async function handleLikeComentario(comment: Comment) {
     if (!user) return;
-    const ref = doc(db, 'posts', postId, 'comments', comment.id);
+    const ref   = doc(db, 'posts', postId, 'comments', comment.id);
     const liked = comment.likes?.includes(user.uid);
     try {
-      await updateDoc(ref, {
-        likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid),
+      await updateDoc(ref, { likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
+      if (!liked) await crearNotificacion({
+        uid: comment.userId,
+        titulo: `❤️ ${user.displayName ?? 'Alguien'} le gustó tu comentario`,
+        mensaje: comment.text.slice(0, 60), tipo: 'like',
       });
-      if (!liked) {
-        await crearNotificacion({
-          uid:     comment.userId,
-          titulo:  `❤️ ${user.displayName ?? 'Alguien'} le gustó tu comentario`,
-          mensaje: comment.text.slice(0, 60),
-          tipo:    'like',
-        });
-      }
     } catch (e) { console.error('[Feed] like comentario:', e); }
   }
 
@@ -170,33 +167,24 @@ function ModalComentarios({ postId, postUserId, onClose }: {
     setEnviando(true);
     try {
       await addDoc(collection(db, 'posts', postId, 'comments'), {
-        text:           sanitizeText(texto),
-        userId:         user.uid,
-        userName:       user.displayName ?? 'Usuario',
-        userPhoto:      user.photoURL    ?? '',
-        likes:          [],
-        replyTo:        respondiendo?.nombre ?? null,
-        createdAt:      serverTimestamp(),
+        text: sanitizeText(texto), userId: user.uid,
+        userName: user.displayName ?? 'Usuario', userPhoto: user.photoURL ?? '',
+        likes: [], replyTo: respondiendo?.nombre ?? null, createdAt: serverTimestamp(),
       });
       await crearNotificacion({
-        uid:     postUserId,
-        titulo:  `💬 ${user.displayName ?? 'Alguien'} comentó tu publicación`,
-        mensaje: texto.trim().slice(0, 80),
-        tipo:    'like',
+        uid: postUserId,
+        titulo: `💬 ${user.displayName ?? 'Alguien'} comentó tu publicación`,
+        mensaje: texto.trim().slice(0, 80), tipo: 'like',
       });
-      setTexto('');
-      setRespondiendo(null);
+      setTexto(''); setRespondiendo(null);
     } catch (e) { console.error('[Feed] comentar:', e); }
     finally { setEnviando(false); }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl flex flex-col animate-slide-up" style={{ maxHeight: '80vh' }}>
-
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <h3 className="font-black text-gray-800 dark:text-gray-100">
             Comentarios {comments.length > 0 && <span className="text-gray-400 font-normal text-sm">({comments.length})</span>}
@@ -205,7 +193,6 @@ function ModalComentarios({ postId, postUserId, onClose }: {
             <XMarkIcon className="w-5 h-5 text-gray-500" />
           </button>
         </div>
-
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {comments.length === 0 && (
             <div className="text-center py-10 text-gray-400 dark:text-gray-600">
@@ -224,26 +211,12 @@ function ModalComentarios({ postId, postUserId, onClose }: {
                     <p className="font-black text-xs text-gray-800 dark:text-gray-100">{c.userName}</p>
                     <p className="text-sm text-gray-700 dark:text-gray-300 leading-snug">{c.text}</p>
                   </div>
-                  {/* Acciones comentario */}
                   <div className="flex items-center gap-4 mt-1 px-1">
-                    <button
-                      onClick={() => handleLikeComentario(c)}
-                      className="flex items-center gap-1 active:scale-90 transition-transform"
-                    >
-                      {likedC
-                        ? <HeartSolid className="w-3.5 h-3.5 text-red-500" />
-                        : <HeartOutline className="w-3.5 h-3.5 text-gray-400" />
-                      }
-                      {(c.likes?.length || 0) > 0 && (
-                        <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-400'}`}>
-                          {c.likes?.length}
-                        </span>
-                      )}
+                    <button onClick={() => handleLikeComentario(c)} className="flex items-center gap-1 active:scale-90 transition-transform">
+                      {likedC ? <HeartSolid className="w-3.5 h-3.5 text-red-500" /> : <HeartOutline className="w-3.5 h-3.5 text-gray-400" />}
+                      {(c.likes?.length || 0) > 0 && <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-400'}`}>{c.likes?.length}</span>}
                     </button>
-                    <button
-                      onClick={() => handleResponder(c)}
-                      className="text-xs text-gray-400 dark:text-gray-500 font-bold active:scale-95 transition-transform"
-                    >
+                    <button onClick={() => handleResponder(c)} className="text-xs text-gray-400 dark:text-gray-500 font-bold active:scale-95 transition-transform">
                       Responder
                     </button>
                   </div>
@@ -252,36 +225,24 @@ function ModalComentarios({ postId, postUserId, onClose }: {
             );
           })}
         </div>
-
         {user && (
           <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
             {respondiendo && (
               <div className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 rounded-xl px-3 py-1.5">
-                <span className="text-xs text-purple-600 dark:text-purple-400 font-bold">
-                  Respondiendo a @{respondiendo.nombre}
-                </span>
+                <span className="text-xs text-purple-600 dark:text-purple-400 font-bold">Respondiendo a @{respondiendo.nombre}</span>
                 <button onClick={() => { setRespondiendo(null); setTexto(''); }} className="text-purple-400 text-xs">✕</button>
               </div>
             )}
             <div className="flex gap-3 items-center">
-              <img
-                src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
-                alt="" className="w-8 h-8 rounded-full object-cover shrink-0"
-              />
-              <input
-                ref={inputRef}
-                value={texto}
-                onChange={(e) => setTexto(e.target.value)}
+              <img src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
+                alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+              <input ref={inputRef} value={texto} onChange={(e) => setTexto(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleEnviar()}
                 placeholder={respondiendo ? `Responder a @${respondiendo.nombre}...` : 'Escribí un comentario...'}
                 maxLength={300}
-                className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full px-4 py-2 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
-              />
-              <button
-                onClick={handleEnviar}
-                disabled={enviando || !texto.trim()}
-                className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center disabled:opacity-40 active:scale-90 transition-transform"
-              >
+                className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full px-4 py-2 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none" />
+              <button onClick={handleEnviar} disabled={enviando || !texto.trim()}
+                className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center disabled:opacity-40 active:scale-90 transition-transform">
                 <PaperAirplaneIcon className="w-4 h-4 text-white" />
               </button>
             </div>
@@ -295,7 +256,8 @@ function ModalComentarios({ postId, postUserId, onClose }: {
 // ─── Feed principal ───────────────────────────────────────────────────────────
 
 export default function Feed({ showCompose = true, onPublished }: FeedProps) {
-  const user = auth.currentUser;
+  const user     = auth.currentUser;
+  const navigate = useNavigate();
 
   const [posts,          setPosts]          = useState<Post[]>([]);
   const [text,           setText]           = useState('');
@@ -359,6 +321,24 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     } finally { setPublicando(false); }
   };
 
+  const handleEliminar = async (post: Post) => {
+    if (!user || user.uid !== post.userId) return;
+    if (!window.confirm) {
+      // Mobile: no confirm dialog, just delete
+    }
+    try {
+      await deleteDoc(doc(db, 'posts', post.id));
+      if (post.mediaUrl) {
+        try {
+          // Extract storage path from URL
+          const url = new URL(post.mediaUrl);
+          const path = decodeURIComponent(url.pathname.split('/o/')[1].split('?')[0]);
+          await deleteObject(storageRef(storage, path));
+        } catch { /* media delete error is non-critical */ }
+      }
+    } catch (e) { console.error('[Feed] eliminar:', e); }
+  };
+
   const handleReaccion = async (postId: string, postUserId: string, emoji: string) => {
     if (!user) return;
     setReaccionandoId(null);
@@ -381,17 +361,19 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   };
 
   const handleCompartir = (post: Post) => {
+    const url   = `${window.location.origin}/user/${post.userId}`;
     const texto = post.text || 'Mirá esta publicación en AG Empleo';
     if (navigator.share) {
-      navigator.share({ title: 'AG Empleo', text: texto, url: window.location.href }).catch(() => {});
+      navigator.share({ title: 'AG Empleo', text: texto, url }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(window.location.href).catch(() => {});
+      navigator.clipboard.writeText(url).catch(() => {});
     }
   };
 
   return (
     <div className="space-y-3">
 
+      {/* Compose */}
       {showCompose && user && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3">
           <div className="flex gap-3 items-center">
@@ -446,25 +428,48 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         </div>
       )}
 
+      {/* Posts */}
       {posts.map((p) => {
         const miReaccion     = p.reactions?.[user?.uid ?? ''];
+        const esMio          = p.userId === user?.uid;
         const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(p.userName || 'U')}&background=7c3aed&color=fff`;
+
         return (
           <article key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+
+            {/* Header */}
             <div className="flex gap-3 items-center p-4 pb-3">
-              <img src={p.userPhoto || avatarFallback} alt={p.userName} className="w-11 h-11 rounded-full object-cover ring-2 ring-purple-100 dark:ring-purple-900" />
+              <button onClick={() => navigate(`/user/${p.userId}`)} className="active:opacity-70 transition-opacity">
+                <img src={p.userPhoto || avatarFallback} alt={p.userName} className="w-11 h-11 rounded-full object-cover ring-2 ring-purple-100 dark:ring-purple-900" />
+              </button>
               <div className="flex-1 min-w-0">
-                <p className="font-black text-gray-900 dark:text-gray-100 text-sm">{p.userName || 'Usuario'}</p>
+                <button onClick={() => navigate(`/user/${p.userId}`)} className="active:opacity-70 transition-opacity text-left">
+                  <p className="font-black text-gray-900 dark:text-gray-100 text-sm">{p.userName || 'Usuario'}</p>
+                </button>
                 <p className="text-xs text-gray-400 dark:text-gray-500">{formatFecha(p.createdAt)}</p>
               </div>
+              {esMio && (
+                <button
+                  onClick={() => handleEliminar(p)}
+                  className="p-2 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform"
+                  aria-label="Eliminar publicación"
+                >
+                  <TrashIcon className="w-4 h-4 text-red-500" />
+                </button>
+              )}
             </div>
+
             {p.text && <p className="px-4 pb-3 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">{p.text}</p>}
+
             {p.mediaUrl && (
               p.mediaType === 'video'
                 ? <video src={p.mediaUrl} controls className="w-full max-h-80 object-cover bg-black" />
                 : <img src={p.mediaUrl} alt="Imagen del post" className="w-full max-h-80 object-cover" loading="lazy" />
             )}
+
             <ResumenReacciones reactions={p.reactions || {}} />
+
+            {/* Acciones */}
             <div className="px-4 py-3 flex items-center gap-5 border-t border-gray-100 dark:border-gray-800">
               <div className="relative">
                 <button
@@ -517,4 +522,4 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {reaccionandoId && <div className="fixed inset-0 z-10" onClick={() => setReaccionandoId(null)} />}
     </div>
   );
-}
+                      }
