@@ -12,15 +12,26 @@ import {
   CameraIcon, HeartIcon, DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 
-interface UserForm { name: string; title: string; bio: string; ciudad: string; }
-interface Post {
-  id: string; text: string; mediaUrl: string; mediaType: string;
-  likes: string[]; createdAt: { toDate: () => Date } | null;
+interface UserForm {
+  name: string; title: string; bio: string; ciudad: string;
+  // Empleo
+  cargoDeseado: string; nivelExperiencia: string;
+  disponible: boolean; salarioEsperado: string;
 }
-type StatusMsg = { tipo: 'exito' | 'error'; texto: string } | null;
 
-const MAX_BIO    = 300;
+interface Post {
+  id: string; text: string; mediaUrl: string;
+  mediaType: string; likes: string[];
+  createdAt: { toDate: () => Date } | null;
+}
+
+type StatusMsg = { tipo: 'exito' | 'error'; texto: string } | null;
+type TabId     = 'social' | 'empleo';
+
+const MAX_BIO      = 300;
 const MAX_PHOTO_MB = 5;
+
+const NIVELES = ['Sin experiencia', 'Junior (0-2 años)', 'Semi-Senior (2-5 años)', 'Senior (5+ años)'];
 
 const COLORS: { id: SocialColor; bg: string; ring: string }[] = [
   { id: 'blue',   bg: 'bg-blue-500',   ring: 'ring-blue-500'   },
@@ -33,8 +44,13 @@ const COLORS: { id: SocialColor; bg: string; ring: string }[] = [
 
 export default function Profile() {
   const { socialColor, setSocialColor } = useTheme();
+
   const [user,         setUser]         = useState<User | null>(null);
-  const [form,         setForm]         = useState<UserForm>({ name: '', title: '', bio: '', ciudad: '' });
+  const [form,         setForm]         = useState<UserForm>({
+    name: '', title: '', bio: '', ciudad: '',
+    cargoDeseado: '', nivelExperiencia: 'Junior (0-2 años)',
+    disponible: true, salarioEsperado: '',
+  });
   const [fotoURL,      setFotoURL]      = useState('');
   const [guardando,    setGuardando]    = useState(false);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
@@ -42,11 +58,19 @@ export default function Profile() {
   const [menuAbierto,  setMenuAbierto]  = useState(false);
   const [misPosts,     setMisPosts]     = useState<Post[]>([]);
   const [totalLikes,   setTotalLikes]   = useState(0);
+  const [seguidores,   setSeguidores]   = useState(0);
+  const [siguiendo,    setSiguiendo]    = useState(0);
+  const [tabActiva,    setTabActiva]    = useState<TabId>('social');
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u) { setFotoURL(u.photoURL || ''); loadProfile(u.uid); loadMisPosts(u.uid); }
+      if (u) {
+        setFotoURL(u.photoURL || '');
+        loadProfile(u.uid);
+        loadMisPosts(u.uid);
+        loadFollowStats(u.uid);
+      }
     });
     return () => unsub();
   }, []);
@@ -56,7 +80,16 @@ export default function Profile() {
       const snap = await getDoc(doc(db, 'users', uid));
       if (snap.exists()) {
         const d = snap.data();
-        setForm({ name: d.name || '', title: d.title || '', bio: d.bio || '', ciudad: d.ciudad || '' });
+        setForm({
+          name:             d.name             || '',
+          title:            d.title            || '',
+          bio:              d.bio              || '',
+          ciudad:           d.ciudad           || '',
+          cargoDeseado:     d.cargoDeseado     || '',
+          nivelExperiencia: d.nivelExperiencia || 'Junior (0-2 años)',
+          disponible:       d.disponible       ?? true,
+          salarioEsperado:  d.salarioEsperado  || '',
+        });
         if (d.photo) setFotoURL(d.photo);
       }
     } catch (e) { console.error('[Profile] load:', e); }
@@ -69,6 +102,13 @@ export default function Profile() {
       setMisPosts(posts);
       setTotalLikes(posts.reduce((acc, p) => acc + (p.likes?.length || 0), 0));
     });
+  };
+
+  const loadFollowStats = (uid: string) => {
+    const qSeg = query(collection(db, 'follows'), where('followingId', '==', uid));
+    onSnapshot(qSeg, (snap) => setSeguidores(snap.size));
+    const qSig = query(collection(db, 'follows'), where('followerId', '==', uid));
+    onSnapshot(qSig, (snap) => setSiguiendo(snap.size));
   };
 
   async function handleFotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -97,9 +137,15 @@ export default function Profile() {
     setGuardando(true); setStatus(null);
     try {
       await updateDoc(doc(db, 'users', user.uid), {
-        name: form.name.trim(), title: form.title.trim(),
-        bio: form.bio.trim(), ciudad: form.ciudad.trim(),
-        updatedAt: serverTimestamp(),
+        name:             form.name.trim(),
+        title:            form.title.trim(),
+        bio:              form.bio.trim(),
+        ciudad:           form.ciudad.trim(),
+        cargoDeseado:     form.cargoDeseado.trim(),
+        nivelExperiencia: form.nivelExperiencia,
+        disponible:       form.disponible,
+        salarioEsperado:  form.salarioEsperado.trim(),
+        updatedAt:        serverTimestamp(),
       });
       setStatus({ tipo: 'exito', texto: '¡Perfil guardado!' });
     } catch (e) {
@@ -111,6 +157,8 @@ export default function Profile() {
   const avatarUrl = fotoURL ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=3b82f6&color=fff&size=128`;
 
+  const inputCls = 'w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300]';
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <Navbar onMenuClick={() => setMenuAbierto(true)} />
@@ -118,14 +166,10 @@ export default function Profile() {
 
       <div className="max-w-lg mx-auto px-4 pt-6 space-y-4">
 
-        {/* Avatar con upload */}
+        {/* Avatar */}
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <img
-              src={avatarUrl}
-              alt="foto"
-              className="w-24 h-24 rounded-full border-4 border-[--sc-100] object-cover shadow-md"
-            />
+            <img src={avatarUrl} alt="foto" className="w-24 h-24 rounded-full border-4 border-[--sc-100] object-cover shadow-md" />
             <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--sc-600)] flex items-center justify-center cursor-pointer ring-2 ring-white dark:ring-gray-950 active:scale-90 transition-transform">
               {subiendoFoto
                 ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -141,97 +185,160 @@ export default function Profile() {
           </div>
 
           {/* Stats */}
-          <div className="flex gap-6 mt-1">
+          <div className="flex gap-6">
             <div className="flex flex-col items-center">
               <span className="font-black text-lg text-gray-900 dark:text-white">{misPosts.length}</span>
-              <span className="text-xs text-gray-400 flex items-center gap-1">
-                <DocumentTextIcon className="w-3.5 h-3.5" /> Posts
-              </span>
+              <span className="text-xs text-gray-400 flex items-center gap-1"><DocumentTextIcon className="w-3.5 h-3.5" /> Posts</span>
+            </div>
+            <div className="w-px bg-gray-200 dark:bg-gray-700" />
+            <div className="flex flex-col items-center">
+              <span className="font-black text-lg text-gray-900 dark:text-white">{seguidores}</span>
+              <span className="text-xs text-gray-400">Seguidores</span>
+            </div>
+            <div className="w-px bg-gray-200 dark:bg-gray-700" />
+            <div className="flex flex-col items-center">
+              <span className="font-black text-lg text-gray-900 dark:text-white">{siguiendo}</span>
+              <span className="text-xs text-gray-400">Siguiendo</span>
             </div>
             <div className="w-px bg-gray-200 dark:bg-gray-700" />
             <div className="flex flex-col items-center">
               <span className="font-black text-lg text-gray-900 dark:text-white">{totalLikes}</span>
-              <span className="text-xs text-gray-400 flex items-center gap-1">
-                <HeartIcon className="w-3.5 h-3.5" /> Likes
-              </span>
+              <span className="text-xs text-gray-400 flex items-center gap-1"><HeartIcon className="w-3.5 h-3.5" /> Likes</span>
             </div>
           </div>
         </div>
 
-        {/* Color zona Social */}
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
-          <h2 className="font-black text-gray-800 dark:text-white text-base mb-3">Color zona Social</h2>
-          <div className="flex gap-3 justify-center">
-            {COLORS.map(({ id, bg, ring }) => (
-              <button
-                key={id}
-                onClick={() => setSocialColor(id)}
-                className={`w-9 h-9 rounded-full ${bg} transition-transform active:scale-90 ${socialColor === id ? `ring-2 ring-offset-2 ${ring}` : ''}`}
-                aria-label={id}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Formulario */}
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
-          <h2 className="font-black text-gray-800 dark:text-white text-base">Editar perfil</h2>
-
-          {([
-            { label: 'Nombre completo',    field: 'name'   as const, placeholder: 'Ej: Juan Pérez'        },
-            { label: 'Título profesional', field: 'title'  as const, placeholder: 'Ej: Desarrollador Web' },
-            { label: 'Ciudad',             field: 'ciudad' as const, placeholder: 'Ej: Buenos Aires'      },
-          ]).map(({ label, field, placeholder }) => (
-            <div key={field} className="space-y-1">
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</label>
-              <input
-                type="text"
-                placeholder={placeholder}
-                value={form[field]}
-                onChange={(e) => setForm({ ...form, [field]: e.target.value })}
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300]"
-              />
-            </div>
-          ))}
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex justify-between">
-              <span>Bio</span>
-              <span className={`normal-case font-normal ${form.bio.length >= MAX_BIO ? 'text-red-400' : 'text-gray-300'}`}>
-                {form.bio.length}/{MAX_BIO}
-              </span>
-            </label>
-            <textarea
-              value={form.bio}
-              onChange={(e) => { if (e.target.value.length <= MAX_BIO) setForm({ ...form, bio: e.target.value }); }}
-              rows={4}
-              maxLength={MAX_BIO}
-              placeholder="Contá algo sobre vos..."
-              className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300] resize-none"
-            />
-          </div>
-
-          {status && (
-            <div
-              className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${status.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}
-              role="alert"
+        {/* Tabs */}
+        <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
+          {(['social', 'empleo'] as TabId[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTabActiva(t)}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${
+                tabActiva === t
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}
             >
-              {status.tipo === 'exito'
-                ? <CheckCircleIcon className="w-5 h-5 shrink-0" />
-                : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
-              }
-              {status.texto}
-            </div>
-          )}
-
-          <button
-            onClick={saveProfile}
-            disabled={guardando}
-            className="w-full bg-[--sc-500] hover:bg-[--sc-600] text-white font-black py-4 rounded-2xl transition-colors disabled:opacity-60"
-          >
-            {guardando ? 'Guardando...' : 'Guardar perfil'}
-          </button>
+              {t === 'social' ? '🌐 Social' : '💼 Empleo'}
+            </button>
+          ))}
         </div>
+
+        {/* Tab Social */}
+        {tabActiva === 'social' && (
+          <>
+            {/* Color */}
+            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
+              <h2 className="font-black text-gray-800 dark:text-white text-base mb-3">Color zona Social</h2>
+              <div className="flex gap-3 justify-center">
+                {COLORS.map(({ id, bg, ring }) => (
+                  <button key={id} onClick={() => setSocialColor(id)}
+                    className={`w-9 h-9 rounded-full ${bg} transition-transform active:scale-90 ${socialColor === id ? `ring-2 ring-offset-2 ${ring}` : ''}`}
+                    aria-label={id}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Formulario social */}
+            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
+              <h2 className="font-black text-gray-800 dark:text-white text-base">Editar perfil</h2>
+              {([
+                { label: 'Nombre completo',    field: 'name'   as const, placeholder: 'Ej: Juan Pérez'        },
+                { label: 'Título profesional', field: 'title'  as const, placeholder: 'Ej: Desarrollador Web' },
+                { label: 'Ciudad',             field: 'ciudad' as const, placeholder: 'Ej: Buenos Aires'      },
+              ]).map(({ label, field, placeholder }) => (
+                <div key={field} className="space-y-1">
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</label>
+                  <input type="text" placeholder={placeholder} value={form[field] as string}
+                    onChange={(e) => setForm({ ...form, [field]: e.target.value })} className={inputCls} />
+                </div>
+              ))}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex justify-between">
+                  <span>Bio</span>
+                  <span className={`normal-case font-normal ${form.bio.length >= MAX_BIO ? 'text-red-400' : 'text-gray-300'}`}>
+                    {form.bio.length}/{MAX_BIO}
+                  </span>
+                </label>
+                <textarea value={form.bio}
+                  onChange={(e) => { if (e.target.value.length <= MAX_BIO) setForm({ ...form, bio: e.target.value }); }}
+                  rows={4} maxLength={MAX_BIO} placeholder="Contá algo sobre vos..."
+                  className={`${inputCls} resize-none`} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Tab Empleo */}
+        {tabActiva === 'empleo' && (
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
+            <h2 className="font-black text-gray-800 dark:text-white text-base">Perfil de empleo</h2>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cargo deseado</label>
+              <input type="text" placeholder="Ej: Operario, Vendedor, Programador"
+                value={form.cargoDeseado}
+                onChange={(e) => setForm({ ...form, cargoDeseado: e.target.value })}
+                className={inputCls} maxLength={80} />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Nivel de experiencia</label>
+              <div className="flex flex-col gap-2">
+                {NIVELES.map((n) => (
+                  <button key={n} type="button"
+                    onClick={() => setForm({ ...form, nivelExperiencia: n })}
+                    className={`text-left px-4 py-3 rounded-2xl text-sm font-bold border transition-all active:scale-95 ${
+                      form.nivelExperiencia === n
+                        ? 'bg-[var(--sc-100)] dark:bg-[var(--sc-700)]/20 border-[var(--sc-500)] text-[var(--sc-700)] dark:text-[var(--sc-100)]'
+                        : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expectativa salarial (opcional)</label>
+              <input type="text" placeholder="Ej: $500.000 - Negociable"
+                value={form.salarioEsperado}
+                onChange={(e) => setForm({ ...form, salarioEsperado: e.target.value })}
+                className={inputCls} maxLength={60} />
+            </div>
+
+            {/* Disponible para trabajar */}
+            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+              <div>
+                <p className="font-black text-gray-800 dark:text-white text-sm">Disponible para trabajar</p>
+                <p className="text-xs text-gray-400">Visible en tu perfil público</p>
+              </div>
+              <button
+                onClick={() => setForm({ ...form, disponible: !form.disponible })}
+                className={`relative w-12 h-6 rounded-full transition-colors ${form.disponible ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.disponible ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Status */}
+        {status && (
+          <div className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${status.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`} role="alert">
+            {status.tipo === 'exito' ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />}
+            {status.texto}
+          </div>
+        )}
+
+        {/* Guardar */}
+        <button onClick={saveProfile} disabled={guardando}
+          className="w-full bg-[--sc-500] hover:bg-[--sc-600] text-white font-black py-4 rounded-2xl transition-colors disabled:opacity-60">
+          {guardando ? 'Guardando...' : 'Guardar perfil'}
+        </button>
 
         {/* Mis publicaciones */}
         {misPosts.length > 0 && (
@@ -241,11 +348,9 @@ export default function Profile() {
               {misPosts.map((p) => (
                 <div key={p.id} className="aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 relative">
                   {p.mediaUrl ? (
-                    p.mediaType === 'video' ? (
-                      <video src={p.mediaUrl} className="w-full h-full object-cover" />
-                    ) : (
-                      <img src={p.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
-                    )
+                    p.mediaType === 'video'
+                      ? <video src={p.mediaUrl} className="w-full h-full object-cover" />
+                      : <img src={p.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center p-2">
                       <p className="text-[10px] text-gray-400 text-center line-clamp-4">{p.text}</p>
@@ -266,4 +371,4 @@ export default function Profile() {
       </div>
     </div>
   );
-              }
+        }
