@@ -6,7 +6,8 @@ import { db } from '../app/firebase';
 import { useTheme } from '../context/ThemeContext';
 import {
   Bars3Icon, PlusIcon, BellIcon,
-  ArrowsRightLeftIcon, HomeIcon, FilmIcon,
+  ArrowsRightLeftIcon, HomeIcon,
+  FilmIcon, MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavbarProps {
@@ -27,7 +28,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
       where('uid', '==', user.uid),
       where('leida', '==', false),
     );
-    const unsub = onSnapshot(q, snap => setSinLeer(snap.size));
+    const unsub = onSnapshot(q, (snap) => setSinLeer(snap.size));
     return () => unsub();
   }, [user]);
 
@@ -62,14 +63,20 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           <span className="text-[9px] text-gray-400">menú</span>
         </button>
 
-        {/* Inicio o Reels según modo */}
+        {/* Segundo ícono — Buscar (social) / Inicio (empleo) */}
         {isSocialMode ? (
-          <Link to="/reels" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
-            <FilmIcon className={`w-6 h-6 ${activo('/reels')}`} />
-            <span className="text-[9px] text-gray-400">Reels</span>
+          <Link
+            to="/search"
+            className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
+          >
+            <MagnifyingGlassIcon className={`w-6 h-6 ${activo('/search')}`} />
+            <span className="text-[9px] text-gray-400">Buscar</span>
           </Link>
         ) : (
-          <Link to="/" className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
+          <Link
+            to="/"
+            className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
+          >
             <HomeIcon className={`w-6 h-6 ${activo('/')}`} />
             <span className="text-[9px] text-gray-400">Inicio</span>
           </Link>
