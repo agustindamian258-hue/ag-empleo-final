@@ -25,12 +25,17 @@ const MENSAJE_INICIAL: Mensaje = {
   content: '¡Hola! Soy la IA de AG Empleo. ¿En qué te puedo ayudar hoy, che?',
 };
 
+const API_KEY_DISPONIBLE = Boolean(import.meta.env.VITE_OPENROUTER_API_KEY);
+
 export default function FloatingAI() {
   const [isOpen,    setIsOpen]    = useState<boolean>(false);
   const [mensaje,   setMensaje]   = useState<string>('');
   const [cargando,  setCargando]  = useState<boolean>(false);
   const [historial, setHistorial] = useState<Mensaje[]>([MENSAJE_INICIAL]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Si no hay API key, no renderizar nada
+  if (!API_KEY_DISPONIBLE) return null;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -68,59 +73,38 @@ export default function FloatingAI() {
 
     try {
       const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-
-      if (!apiKey) {
-        throw new Error('KEY_NO_CARGADA: reiniciá el servidor.');
-      }
-
       const perfil = await obtenerPerfilUsuario();
-      const systemFinal = perfil
-        ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}`
-        : SYSTEM_PROMPT;
+      const systemFinal = perfil ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}` : SYSTEM_PROMPT;
 
-      const response = await fetch(
-        'https://openrouter.ai/api/v1/chat/completions',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-            'HTTP-Referer':  'https://ag-empleo.app',
-            'X-Title':       'AG Empleo',
-          },
-          body: JSON.stringify({
-            model: 'meta-llama/llama-4-scout:free',
-            messages: [
-              { role: 'system', content: systemFinal },
-              ...nuevoHistorial.slice(-MAX_HISTORIAL).map(h => ({
-                role:    h.role === 'ai' ? 'assistant' : 'user',
-                content: h.content,
-              })),
-            ],
-          }),
-        }
-      );
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer':  'https://ag-empleo.app',
+          'X-Title':       'AG Empleo',
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-4-scout:free',
+          messages: [
+            { role: 'system', content: systemFinal },
+            ...nuevoHistorial.slice(-MAX_HISTORIAL).map(h => ({
+              role:    h.role === 'ai' ? 'assistant' : 'user',
+              content: h.content,
+            })),
+          ],
+        }),
+      });
 
       const data = await response.json();
+      if (!response.ok) throw new Error(`ERROR ${response.status}: ${JSON.stringify(data?.error ?? data)}`);
 
-      if (!response.ok) {
-        throw new Error(`ERROR ${response.status}: ${JSON.stringify(data?.error ?? data)}`);
-      }
-
-      const texto = data.choices?.[0]?.message?.content?.trim()
-        || '¿Me lo repetís? No entendí bien.';
-
-      setHistorial(prev => [
-        ...prev,
-        { id: `ai_${Date.now()}`, role: 'ai', content: texto },
-      ]);
+      const texto = data.choices?.[0]?.message?.content?.trim() || '¿Me lo repetís? No entendí bien.';
+      setHistorial(prev => [...prev, { id: `ai_${Date.now()}`, role: 'ai', content: texto }]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[FloatingAI] Error:', msg);
-      setHistorial(prev => [
-        ...prev,
-        { id: `ai_err_${Date.now()}`, role: 'ai', content: `⚠️ ${msg}` },
-      ]);
+      setHistorial(prev => [...prev, { id: `ai_err_${Date.now()}`, role: 'ai', content: `⚠️ ${msg}` }]);
     } finally {
       setCargando(false);
     }
@@ -140,7 +124,6 @@ export default function FloatingAI() {
 
       {isOpen && (
         <div className="fixed bottom-24 right-4 w-[90vw] max-w-[360px] h-[520px] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl z-[150] flex flex-col border border-gray-100 dark:border-gray-800 overflow-hidden">
-
           <div className="bg-[--sc-500] p-4 flex justify-between items-center text-white">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
@@ -156,12 +139,7 @@ export default function FloatingAI() {
             </button>
           </div>
 
-          <div
-            ref={scrollRef}
-            className="flex-grow p-4 overflow-y-auto bg-gray-50 dark:bg-gray-950 space-y-3"
-            role="log"
-            aria-live="polite"
-          >
+          <div ref={scrollRef} className="flex-grow p-4 overflow-y-auto bg-gray-50 dark:bg-gray-950 space-y-3" role="log" aria-live="polite">
             {historial.map(chat => (
               <div key={chat.id} className={`flex ${chat.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
                 <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-[85%] ${
@@ -173,7 +151,6 @@ export default function FloatingAI() {
                 </div>
               </div>
             ))}
-
             {cargando && (
               <div className="flex gap-1 p-3">
                 <div className="w-2 h-2 bg-[--sc-500] rounded-full animate-bounce" />
