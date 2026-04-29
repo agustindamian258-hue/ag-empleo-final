@@ -1,16 +1,16 @@
 // src/components/Feed.tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc,
+  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc, limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import {
   PhotoIcon, PaperAirplaneIcon, ExclamationCircleIcon,
   ChatBubbleOvalLeftIcon, ShareIcon, XMarkIcon, FaceSmileIcon,
-  HeartIcon as HeartOutline, TrashIcon,
+  HeartIcon as HeartOutline, TrashIcon, FlagIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 
@@ -46,6 +46,7 @@ const MAX_FILE_SIZE_MB = 50;
 const MAX_TEXT_LENGTH  = 500;
 const ALLOWED_TYPES    = ['image/', 'video/'];
 const REACCIONES       = ['❤️', '😂', '😍', '👍', '😲'];
+const PAGE_SIZE        = 10;
 
 function sanitizeText(input: string): string {
   return input.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
@@ -68,8 +69,6 @@ async function crearNotificacion({ uid, titulo, mensaje, tipo }: {
     });
   } catch (e) { console.error('[Notif]', e); }
 }
-
-// ─── Selector de reacción ─────────────────────────────────────────────────────
 
 function SelectorReaccion({ onSelect }: { onSelect: (emoji: string) => void }) {
   const [custom, setCustom] = useState(false);
@@ -119,8 +118,6 @@ function ComentariosCount({ postId }: { postId: string }) {
   }, [postId]);
   return <span className="text-sm font-bold">{count}</span>;
 }
-
-// ─── Modal comentarios ────────────────────────────────────────────────────────
 
 function ModalComentarios({ postId, postUserId, onClose }: {
   postId: string; postUserId: string; onClose: () => void;
@@ -253,8 +250,6 @@ function ModalComentarios({ postId, postUserId, onClose }: {
   );
 }
 
-// ─── Feed principal ───────────────────────────────────────────────────────────
-
 export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const user     = auth.currentUser;
   const navigate = useNavigate();
@@ -268,16 +263,49 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const [comentandoId,   setComentandoId]   = useState<string | null>(null);
   const [comentandoUid,  setComentandoUid]  = useState('');
   const [reaccionandoId, setReaccionandoId] = useState<string | null>(null);
+  const [lastDoc,        setLastDoc]        = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hayMas,         setHayMas]         = useState(true);
+  const [cargandoMas,    setCargandoMas]    = useState(false);
+  const [reportandoId,   setReportandoId]   = useState<string | null>(null);
+  const [sinConexion,    setSinConexion]     = useState(false);
   const previewUrlRef = useRef<string | null>(null);
 
+  // Monitor conexión
   useEffect(() => {
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+    const online  = () => setSinConexion(false);
+    const offline = () => setSinConexion(true);
+    window.addEventListener('online',  online);
+    window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, []);
+
+  // Carga inicial con paginación
+  useEffect(() => {
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
     const unsub = onSnapshot(q,
-      (snap) => setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post))),
-      (err)  => { console.error('[Feed]', err); setError('No se pudieron cargar las publicaciones.'); }
+      (snap) => {
+        setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post)));
+        setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
+        setHayMas(snap.docs.length === PAGE_SIZE);
+      },
+      (err) => { console.error('[Feed]', err); setError('No se pudieron cargar las publicaciones.'); }
     );
     return () => unsub();
   }, []);
+
+  const cargarMas = useCallback(async () => {
+    if (!lastDoc || cargandoMas || !hayMas) return;
+    setCargandoMas(true);
+    try {
+      const q    = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE));
+      const snap = await getDocs(q);
+      const nuevos = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
+      setPosts((prev) => [...prev, ...nuevos]);
+      setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
+      setHayMas(snap.docs.length === PAGE_SIZE);
+    } catch (e) { console.error('[Feed] cargarMas:', e); }
+    finally { setCargandoMas(false); }
+  }, [lastDoc, cargandoMas, hayMas]);
 
   useEffect(() => { return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); }; }, []);
 
@@ -301,11 +329,15 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     try {
       let mediaUrl  = '';
       let mediaType: 'image' | 'video' | '' = '';
-      if (file) {
-        const sRef = storageRef(storage, `posts/${Date.now()}_${file.name}`);
-        await uploadBytes(sRef, file);
-        mediaUrl  = await getDownloadURL(sRef);
-        mediaType = file.type.startsWith('video') ? 'video' : 'image';
+      if (file && storage) {
+        try {
+          const sRef = storageRef(storage, `posts/${Date.now()}_${file.name}`);
+          await uploadBytes(sRef, file);
+          mediaUrl  = await getDownloadURL(sRef);
+          mediaType = file.type.startsWith('video') ? 'video' : 'image';
+        } catch {
+          setError('No se pudo subir el archivo. Se publicará sin imagen.');
+        }
       }
       await addDoc(collection(db, 'posts'), {
         text: textSanitizado, mediaUrl, mediaType,
@@ -323,18 +355,14 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
 
   const handleEliminar = async (post: Post) => {
     if (!user || user.uid !== post.userId) return;
-    if (!window.confirm) {
-      // Mobile: no confirm dialog, just delete
-    }
     try {
       await deleteDoc(doc(db, 'posts', post.id));
       if (post.mediaUrl) {
         try {
-          // Extract storage path from URL
-          const url = new URL(post.mediaUrl);
+          const url  = new URL(post.mediaUrl);
           const path = decodeURIComponent(url.pathname.split('/o/')[1].split('?')[0]);
           await deleteObject(storageRef(storage, path));
-        } catch { /* media delete error is non-critical */ }
+        } catch { /* non-critical */ }
       }
     } catch (e) { console.error('[Feed] eliminar:', e); }
   };
@@ -370,10 +398,29 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     }
   };
 
+  const handleReportar = async (postId: string) => {
+    if (!user) return;
+    setReportandoId(null);
+    try {
+      await addDoc(collection(db, 'reports'), {
+        postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
+      });
+    } catch (e) { console.error('[Feed] reportar:', e); }
+  };
+
+  // Vibración en notificaciones
+  const vibrar = () => { if (navigator.vibrate) navigator.vibrate(50); };
+
   return (
     <div className="space-y-3">
 
-      {/* Compose */}
+      {sinConexion && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 rounded-2xl text-red-600 dark:text-red-400 text-sm font-bold">
+          <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
+          Sin conexión a internet
+        </div>
+      )}
+
       {showCompose && user && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3">
           <div className="flex gap-3 items-center">
@@ -428,7 +475,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         </div>
       )}
 
-      {/* Posts */}
       {posts.map((p) => {
         const miReaccion     = p.reactions?.[user?.uid ?? ''];
         const esMio          = p.userId === user?.uid;
@@ -436,8 +482,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
 
         return (
           <article key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-
-            {/* Header */}
             <div className="flex gap-3 items-center p-4 pb-3">
               <button onClick={() => navigate(`/user/${p.userId}`)} className="active:opacity-70 transition-opacity">
                 <img src={p.userPhoto || avatarFallback} alt={p.userName} className="w-11 h-11 rounded-full object-cover ring-2 ring-purple-100 dark:ring-purple-900" />
@@ -448,16 +492,37 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
                 </button>
                 <p className="text-xs text-gray-400 dark:text-gray-500">{formatFecha(p.createdAt)}</p>
               </div>
-              {esMio && (
-                <button
-                  onClick={() => handleEliminar(p)}
-                  className="p-2 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform"
-                  aria-label="Eliminar publicación"
-                >
-                  <TrashIcon className="w-4 h-4 text-red-500" />
-                </button>
-              )}
+              <div className="flex items-center gap-1">
+                {!esMio && (
+                  <button
+                    onClick={() => { vibrar(); setReportandoId(reportandoId === p.id ? null : p.id); }}
+                    className="p-2 rounded-full bg-gray-50 dark:bg-gray-800 active:scale-90 transition-transform"
+                    aria-label="Reportar"
+                  >
+                    <FlagIcon className="w-4 h-4 text-gray-400" />
+                  </button>
+                )}
+                {esMio && (
+                  <button
+                    onClick={() => handleEliminar(p)}
+                    className="p-2 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform"
+                    aria-label="Eliminar publicación"
+                  >
+                    <TrashIcon className="w-4 h-4 text-red-500" />
+                  </button>
+                )}
+              </div>
             </div>
+
+            {reportandoId === p.id && (
+              <div className="mx-4 mb-3 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-2xl flex items-center justify-between">
+                <p className="text-xs text-orange-700 dark:text-orange-300 font-bold">¿Reportar esta publicación?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => handleReportar(p.id)} className="text-xs bg-orange-500 text-white px-3 py-1 rounded-full font-bold active:scale-95">Sí</button>
+                  <button onClick={() => setReportandoId(null)} className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full font-bold active:scale-95">No</button>
+                </div>
+              </div>
+            )}
 
             {p.text && <p className="px-4 pb-3 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">{p.text}</p>}
 
@@ -469,11 +534,10 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
 
             <ResumenReacciones reactions={p.reactions || {}} />
 
-            {/* Acciones */}
             <div className="px-4 py-3 flex items-center gap-5 border-t border-gray-100 dark:border-gray-800">
               <div className="relative">
                 <button
-                  onClick={() => setReaccionandoId(reaccionandoId === p.id ? null : p.id)}
+                  onClick={() => { vibrar(); setReaccionandoId(reaccionandoId === p.id ? null : p.id); }}
                   className="flex items-center gap-1.5 active:scale-90 transition-transform"
                 >
                   <span className="text-2xl leading-none">{miReaccion || '🤍'}</span>
@@ -503,6 +567,21 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         );
       })}
 
+      {hayMas && (
+        <button
+          onClick={cargarMas}
+          disabled={cargandoMas}
+          className="w-full py-3 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold active:scale-95 transition-all disabled:opacity-50"
+        >
+          {cargandoMas ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              Cargando...
+            </span>
+          ) : 'Ver más publicaciones'}
+        </button>
+      )}
+
       {posts.length === 0 && !error && (
         <div className="text-center py-16 text-gray-300 dark:text-gray-600">
           <p className="text-4xl mb-3">📭</p>
@@ -520,6 +599,7 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       )}
 
       {reaccionandoId && <div className="fixed inset-0 z-10" onClick={() => setReaccionandoId(null)} />}
+      {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-                      }
+      }
