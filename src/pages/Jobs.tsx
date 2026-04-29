@@ -13,10 +13,8 @@ import Menu   from '../components/Menu';
 import {
   BriefcaseIcon, MapPinIcon, CurrencyDollarIcon,
   MagnifyingGlassIcon, ExclamationCircleIcon,
-  PlusIcon, XMarkIcon, PhotoIcon,
+  PlusIcon, XMarkIcon, PhotoIcon, EnvelopeIcon,
 } from '@heroicons/react/24/outline';
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type TipoEmpleo = 'full-time' | 'part-time' | 'changa' | 'remoto';
 
@@ -28,6 +26,7 @@ interface Empleo {
   salario?:    string;
   tipo:        TipoEmpleo | string;
   descripcion: string;
+  contacto?:   string;
   mediaUrl?:   string;
   mediaType?:  'image' | 'video' | '';
   createdAt:   { toDate: () => Date } | null;
@@ -40,14 +39,13 @@ interface FormData {
   salario:     string;
   tipo:        TipoEmpleo;
   descripcion: string;
+  contacto:    string;
 }
 
 const FORM_INICIAL: FormData = {
   titulo: '', empresa: '', ubicacion: '',
-  salario: '', tipo: 'full-time', descripcion: '',
+  salario: '', tipo: 'full-time', descripcion: '', contacto: '',
 };
-
-// ─── Constantes ───────────────────────────────────────────────────────────────
 
 const TIPOS      = ['todos', 'full-time', 'part-time', 'changa', 'remoto'] as const;
 const TIPOS_FORM: TipoEmpleo[] = ['full-time', 'part-time', 'changa', 'remoto'];
@@ -64,8 +62,6 @@ function formatFecha(createdAt: Empleo['createdAt']): string {
   if (!createdAt?.toDate) return '';
   return createdAt.toDate().toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
-
-// ─── Modal publicar ───────────────────────────────────────────────────────────
 
 function ModalPublicar({ onClose }: { onClose: () => void }) {
   const [form,      setForm]      = useState<FormData>(FORM_INICIAL);
@@ -107,11 +103,15 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
     try {
       let mediaUrl  = '';
       let mediaType: 'image' | 'video' | '' = '';
-      if (file) {
-        const sRef = storageRef(storage, `empleos/${Date.now()}_${file.name}`);
-        await uploadBytes(sRef, file);
-        mediaUrl  = await getDownloadURL(sRef);
-        mediaType = file.type.startsWith('video') ? 'video' : 'image';
+      if (file && storage) {
+        try {
+          const sRef = storageRef(storage, `empleos/${Date.now()}_${file.name}`);
+          await uploadBytes(sRef, file);
+          mediaUrl  = await getDownloadURL(sRef);
+          mediaType = file.type.startsWith('video') ? 'video' : 'image';
+        } catch {
+          setErrForm('No se pudo subir el archivo. Se publicará sin imagen.');
+        }
       }
       await addDoc(collection(db, 'empleos'), {
         titulo:      form.titulo.trim(),
@@ -120,6 +120,7 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
         salario:     form.salario.trim() || null,
         tipo:        form.tipo,
         descripcion: form.descripcion.trim(),
+        contacto:    form.contacto.trim() || null,
         mediaUrl, mediaType,
         createdAt:   serverTimestamp(),
         uid:         auth.currentUser?.uid ?? null,
@@ -138,8 +139,9 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 pb-10 space-y-4 animate-slide-up overflow-y-auto max-h-[90vh]">
-
+      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
+        style={{ maxHeight: '92vh', paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}
+      >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">Publicar empleo</h2>
           <button
@@ -155,7 +157,18 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
         <input name="ubicacion" value={form.ubicacion} onChange={handleChange} placeholder="Ubicación *"          className={inputBase} maxLength={80} />
         <input name="salario"   value={form.salario}   onChange={handleChange} placeholder="Salario (opcional)"   className={inputBase} maxLength={40} />
 
-        {/* Tipo */}
+        <div className="relative">
+          <EnvelopeIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            name="contacto"
+            value={form.contacto}
+            onChange={handleChange}
+            placeholder="Email o WhatsApp de contacto (opcional)"
+            className={`${inputBase} pl-10`}
+            maxLength={80}
+          />
+        </div>
+
         <div className="flex gap-2 flex-wrap">
           {TIPOS_FORM.map((t) => (
             <button
@@ -182,7 +195,6 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
           maxLength={500}
         />
 
-        {/* Upload foto/video */}
         {preview ? (
           <div className="relative rounded-2xl overflow-hidden bg-black">
             {file?.type.startsWith('video') ? (
@@ -214,7 +226,7 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
           type="button"
           onClick={handleSubmit}
           disabled={guardando}
-          className="w-full py-3.5 rounded-2xl bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full py-4 rounded-2xl bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {guardando ? (
             <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Publicando...</>
@@ -224,8 +236,6 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-
-// ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function Jobs() {
   const [empleos,      setEmpleos]      = useState<Empleo[]>([]);
@@ -348,7 +358,7 @@ export default function Jobs() {
                 {empleo.descripcion}
               </p>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
                   <span className="flex items-center gap-1">
                     <MapPinIcon className="w-3.5 h-3.5 shrink-0" />
@@ -361,15 +371,24 @@ export default function Jobs() {
                     </span>
                   )}
                 </div>
+                {empleo.contacto && (
+                  <a
+                    href={empleo.contacto.includes('@') ? `mailto:${empleo.contacto}` : `https://wa.me/${empleo.contacto.replace(/\D/g,'')}`}
+                    target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1 text-xs text-[var(--sc-600)] font-bold active:scale-95 transition-transform"
+                  >
+                    <EnvelopeIcon className="w-3.5 h-3.5" />
+                    Contactar
+                  </a>
+                )}
                 {empleo.createdAt && (
-                  <span className="text-[10px] text-gray-300 dark:text-gray-600">
+                  <span className="text-[10px] text-gray-300 dark:text-gray-600 ml-auto">
                     {formatFecha(empleo.createdAt)}
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Media del empleo */}
             {empleo.mediaUrl && (
               empleo.mediaType === 'video'
                 ? <video src={empleo.mediaUrl} controls className="w-full max-h-56 object-cover bg-black" />
@@ -395,4 +414,4 @@ export default function Jobs() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-}
+                }
