@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   PhotoIcon, PaperAirplaneIcon, ExclamationCircleIcon,
   ChatBubbleOvalLeftIcon, ShareIcon, XMarkIcon, FaceSmileIcon,
-  HeartIcon as HeartOutline, TrashIcon, FlagIcon,
+  HeartIcon as HeartOutline, TrashIcon, FlagIcon, PencilIcon, CheckIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 
@@ -198,8 +198,8 @@ function ModalComentarios({ postId, postUserId, onClose }: {
             </div>
           )}
           {comments.map((c) => {
-            const avatar  = c.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.userName || 'U')}&background=7c3aed&color=fff`;
-            const likedC  = c.likes?.includes(user?.uid ?? '');
+            const avatar = c.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.userName || 'U')}&background=7c3aed&color=fff`;
+            const likedC = c.likes?.includes(user?.uid ?? '');
             return (
               <div key={c.id} className={`flex gap-3 ${c.replyTo ? 'ml-8' : ''}`}>
                 <img src={avatar} alt={c.userName} className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5" />
@@ -267,10 +267,12 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const [hayMas,         setHayMas]         = useState(true);
   const [cargandoMas,    setCargandoMas]    = useState(false);
   const [reportandoId,   setReportandoId]   = useState<string | null>(null);
-  const [sinConexion,    setSinConexion]     = useState(false);
+  const [sinConexion,    setSinConexion]    = useState(false);
+  const [editandoId,     setEditandoId]     = useState<string | null>(null);
+  const [editTexto,      setEditTexto]      = useState('');
+  const [guardandoEdit,  setGuardandoEdit]  = useState(false);
   const previewUrlRef = useRef<string | null>(null);
 
-  // Monitor conexión
   useEffect(() => {
     const online  = () => setSinConexion(false);
     const offline = () => setSinConexion(true);
@@ -279,7 +281,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
   }, []);
 
-  // Carga inicial con paginación
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
     const unsub = onSnapshot(q,
@@ -367,6 +368,25 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     } catch (e) { console.error('[Feed] eliminar:', e); }
   };
 
+  const handleEditarInicio = (post: Post) => {
+    setEditandoId(post.id);
+    setEditTexto(post.text);
+  };
+
+  const handleEditarGuardar = async (postId: string) => {
+    if (!user || !editTexto.trim()) return;
+    setGuardandoEdit(true);
+    try {
+      await updateDoc(doc(db, 'posts', postId), {
+        text: sanitizeText(editTexto),
+        editadoEn: serverTimestamp(),
+      });
+      setEditandoId(null);
+      setEditTexto('');
+    } catch (e) { console.error('[Feed] editar:', e); }
+    finally { setGuardandoEdit(false); }
+  };
+
   const handleReaccion = async (postId: string, postUserId: string, emoji: string) => {
     if (!user) return;
     setReaccionandoId(null);
@@ -408,7 +428,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     } catch (e) { console.error('[Feed] reportar:', e); }
   };
 
-  // Vibración en notificaciones
   const vibrar = () => { if (navigator.vibrate) navigator.vibrate(50); };
 
   return (
@@ -478,6 +497,7 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {posts.map((p) => {
         const miReaccion     = p.reactions?.[user?.uid ?? ''];
         const esMio          = p.userId === user?.uid;
+        const editando       = editandoId === p.id;
         const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(p.userName || 'U')}&background=7c3aed&color=fff`;
 
         return (
@@ -503,13 +523,22 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
                   </button>
                 )}
                 {esMio && (
-                  <button
-                    onClick={() => handleEliminar(p)}
-                    className="p-2 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform"
-                    aria-label="Eliminar publicación"
-                  >
-                    <TrashIcon className="w-4 h-4 text-red-500" />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleEditarInicio(p)}
+                      className="p-2 rounded-full bg-blue-50 dark:bg-blue-900/20 active:scale-90 transition-transform"
+                      aria-label="Editar publicación"
+                    >
+                      <PencilIcon className="w-4 h-4 text-blue-500" />
+                    </button>
+                    <button
+                      onClick={() => handleEliminar(p)}
+                      className="p-2 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform"
+                      aria-label="Eliminar publicación"
+                    >
+                      <TrashIcon className="w-4 h-4 text-red-500" />
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -524,7 +553,34 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
               </div>
             )}
 
-            {p.text && <p className="px-4 pb-3 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">{p.text}</p>}
+            {editando ? (
+              <div className="px-4 pb-3 space-y-2">
+                <textarea
+                  value={editTexto}
+                  onChange={(e) => { if (e.target.value.length <= MAX_TEXT_LENGTH) setEditTexto(e.target.value); }}
+                  className="w-full border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 text-gray-800 dark:text-gray-100 rounded-2xl p-3 text-sm resize-none focus:outline-none h-24"
+                  maxLength={MAX_TEXT_LENGTH}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setEditandoId(null); setEditTexto(''); }}
+                    className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold active:scale-95"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleEditarGuardar(p.id)}
+                    disabled={guardandoEdit || !editTexto.trim()}
+                    className="flex-1 py-2 rounded-xl bg-blue-500 text-white text-sm font-bold flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
+                  >
+                    <CheckIcon className="w-4 h-4" />
+                    {guardandoEdit ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              p.text && <p className="px-4 pb-3 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">{p.text}</p>
+            )}
 
             {p.mediaUrl && (
               p.mediaType === 'video'
@@ -602,4 +658,4 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-      }
+}
