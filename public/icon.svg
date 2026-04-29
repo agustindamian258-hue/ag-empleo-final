@@ -1,0 +1,43 @@
+<!-- public/icon.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#2a4a5a"/>
+      <stop offset="100%" stop-color="#0f2030"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Fondo -->
+  <rect width="512" height="512" rx="80" fill="url(#bg)"/>
+
+  <!-- Texto AG -->
+  <text
+    x="256" y="210"
+    text-anchor="middle"
+    font-family="Arial, sans-serif"
+    font-weight="700"
+    font-size="160"
+    fill="#c8eaf0"
+    filter="url(#glow)"
+  >AG</text>
+
+  <!-- Texto Empleo -->
+  <text
+    x="256" y="320"
+    text-anchor="middle"
+    font-family="Arial, sans-serif"
+    font-weight="300"
+    font-size="72"
+    fill="#a0d4e0"
+    filter="url(#glow)"
+    letter-spacing="8"
+  >EMPLEO</text>
+</svg>
