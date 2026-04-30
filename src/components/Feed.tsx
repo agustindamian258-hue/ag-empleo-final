@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc, limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData,
+  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc, limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData, where,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
@@ -271,7 +271,23 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const [editandoId,     setEditandoId]     = useState<string | null>(null);
   const [editTexto,      setEditTexto]      = useState('');
   const [guardandoEdit,  setGuardandoEdit]  = useState(false);
+
+  // Filtro seguidos
+  const [soloSeguidos,   setSoloSeguidos]   = useState(false);
+  const [siguiendoUids,  setSiguiendoUids]  = useState<string[]>([]);
+  const [cargandoFiltro, setCargandoFiltro] = useState(false);
+
   const previewUrlRef = useRef<string | null>(null);
+
+  // Cargar UIDs seguidos
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'follows'), where('followerId', '==', user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      setSiguiendoUids(snap.docs.map((d) => d.data().followingId as string));
+    }, console.error);
+    return () => unsub();
+  }, [user]);
 
   useEffect(() => {
     const online  = () => setSinConexion(false);
@@ -281,8 +297,23 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
   }, []);
 
+  // Recarga posts cuando cambia el filtro
   useEffect(() => {
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
+    setPosts([]);
+    setLastDoc(null);
+    setHayMas(true);
+
+    if (soloSeguidos && siguiendoUids.length === 0) return;
+
+    const q = soloSeguidos
+      ? query(
+          collection(db, 'posts'),
+          where('userId', 'in', siguiendoUids.slice(0, 10)),
+          orderBy('createdAt', 'desc'),
+          limit(PAGE_SIZE),
+        )
+      : query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
+
     const unsub = onSnapshot(q,
       (snap) => {
         setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post)));
@@ -292,21 +323,29 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       (err) => { console.error('[Feed]', err); setError('No se pudieron cargar las publicaciones.'); }
     );
     return () => unsub();
-  }, []);
+  }, [soloSeguidos, siguiendoUids]);
 
   const cargarMas = useCallback(async () => {
     if (!lastDoc || cargandoMas || !hayMas) return;
     setCargandoMas(true);
     try {
-      const q    = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE));
-      const snap = await getDocs(q);
+      const q = soloSeguidos
+        ? query(
+            collection(db, 'posts'),
+            where('userId', 'in', siguiendoUids.slice(0, 10)),
+            orderBy('createdAt', 'desc'),
+            startAfter(lastDoc),
+            limit(PAGE_SIZE),
+          )
+        : query(collection(db, 'posts'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE));
+      const snap   = await getDocs(q);
       const nuevos = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
       setPosts((prev) => [...prev, ...nuevos]);
       setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
       setHayMas(snap.docs.length === PAGE_SIZE);
     } catch (e) { console.error('[Feed] cargarMas:', e); }
     finally { setCargandoMas(false); }
-  }, [lastDoc, cargandoMas, hayMas]);
+  }, [lastDoc, cargandoMas, hayMas, soloSeguidos, siguiendoUids]);
 
   useEffect(() => { return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); }; }, []);
 
@@ -430,6 +469,10 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
 
   const vibrar = () => { if (navigator.vibrate) navigator.vibrate(50); };
 
+  const postsFiltrados = soloSeguidos && siguiendoUids.length > 10
+    ? posts.filter((p) => siguiendoUids.includes(p.userId))
+    : posts;
+
   return (
     <div className="space-y-3">
 
@@ -439,6 +482,30 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
           Sin conexión a internet
         </div>
       )}
+
+      {/* Toggle Todos / Siguiendo */}
+      <div className="flex gap-2 pb-1">
+        <button
+          onClick={() => setSoloSeguidos(false)}
+          className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
+            !soloSeguidos
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+          }`}
+        >
+          Todos
+        </button>
+        <button
+          onClick={() => setSoloSeguidos(true)}
+          className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
+            soloSeguidos
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+          }`}
+        >
+          Siguiendo
+        </button>
+      </div>
 
       {showCompose && user && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3">
@@ -494,7 +561,7 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         </div>
       )}
 
-      {posts.map((p) => {
+      {postsFiltrados.map((p) => {
         const miReaccion     = p.reactions?.[user?.uid ?? ''];
         const esMio          = p.userId === user?.uid;
         const editando       = editandoId === p.id;
@@ -623,7 +690,7 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         );
       })}
 
-      {hayMas && (
+      {hayMas && postsFiltrados.length > 0 && (
         <button
           onClick={cargarMas}
           disabled={cargandoMas}
@@ -638,11 +705,15 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         </button>
       )}
 
-      {posts.length === 0 && !error && (
+      {postsFiltrados.length === 0 && !error && (
         <div className="text-center py-16 text-gray-300 dark:text-gray-600">
-          <p className="text-4xl mb-3">📭</p>
-          <p className="font-bold text-lg">Sin publicaciones aún</p>
-          <p className="text-sm">¡Sé el primero en compartir algo!</p>
+          <p className="text-4xl mb-3">{soloSeguidos ? '👥' : '📭'}</p>
+          <p className="font-bold text-lg">
+            {soloSeguidos ? 'Nadie que seguís publicó aún' : 'Sin publicaciones aún'}
+          </p>
+          <p className="text-sm">
+            {soloSeguidos ? 'Seguí más personas para ver su contenido' : '¡Sé el primero en compartir algo!'}
+          </p>
         </div>
       )}
 
@@ -658,4 +729,4 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-}
+                }
