@@ -8,7 +8,9 @@ import {
   Bars3Icon, PlusIcon, BellIcon,
   ArrowsRightLeftIcon, HomeIcon,
   FilmIcon, MagnifyingGlassIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
+import { useNavigate as useNav } from 'react-router-dom';
 
 interface NavbarProps {
   onMenuClick?:    () => void;
@@ -19,17 +21,27 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
   const { isSocialMode, toggleMode, user } = useTheme();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const [sinLeer, setSinLeer] = useState(0);
+  const [sinLeer,      setSinLeer]      = useState(0);
+  const [sinMensajes,  setSinMensajes]  = useState(0);
 
   useEffect(() => {
     if (!user) return;
-    const q = query(
+
+    const qNotif = query(
       collection(db, 'notifications'),
       where('uid', '==', user.uid),
       where('leida', '==', false),
     );
-    const unsub = onSnapshot(q, (snap) => setSinLeer(snap.size));
-    return () => unsub();
+    const unsubNotif = onSnapshot(qNotif, (snap) => setSinLeer(snap.size));
+
+    const qChats = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', user.uid),
+      where('unreadBy', 'array-contains', user.uid),
+    );
+    const unsubChats = onSnapshot(qChats, (snap) => setSinMensajes(snap.size), console.error);
+
+    return () => { unsubNotif(); unsubChats(); };
   }, [user]);
 
   const handleSwitch = () => {
@@ -51,7 +63,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
       role="navigation"
       aria-label="Navegación principal"
     >
-      <div className="flex justify-between items-center px-6 pt-2 pb-3">
+      <div className="flex justify-between items-center px-4 pt-2 pb-3">
 
         {/* Menú */}
         <button
@@ -59,7 +71,14 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           aria-label="Abrir menú"
           className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
         >
-          <Bars3Icon className={`w-6 h-6 ${color}`} />
+          <div className="relative">
+            <Bars3Icon className={`w-6 h-6 ${color}`} />
+            {sinMensajes > 0 && (
+              <span className="absolute -top-1 -right-1.5 w-4 h-4 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">
+                {sinMensajes > 9 ? '9+' : sinMensajes}
+              </span>
+            )}
+          </div>
           <span className="text-[9px] text-gray-400">menú</span>
         </button>
 
