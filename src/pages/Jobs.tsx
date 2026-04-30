@@ -4,7 +4,7 @@ import { db, auth } from '../app/firebase';
 import { storage } from '../app/firebase';
 import {
   collection, query, orderBy, onSnapshot,
-  addDoc, serverTimestamp,
+  addDoc, serverTimestamp, doc, updateDoc, deleteDoc,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -14,6 +14,7 @@ import {
   BriefcaseIcon, MapPinIcon, CurrencyDollarIcon,
   MagnifyingGlassIcon, ExclamationCircleIcon,
   PlusIcon, XMarkIcon, PhotoIcon, EnvelopeIcon,
+  PencilIcon, TrashIcon, CheckIcon,
 } from '@heroicons/react/24/outline';
 
 type TipoEmpleo = 'full-time' | 'part-time' | 'changa' | 'remoto';
@@ -29,6 +30,7 @@ interface Empleo {
   contacto?:   string;
   mediaUrl?:   string;
   mediaType?:  'image' | 'video' | '';
+  uid?:        string;
   createdAt:   { toDate: () => Date } | null;
 }
 
@@ -63,10 +65,29 @@ function formatFecha(createdAt: Empleo['createdAt']): string {
   return createdAt.toDate().toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
 
-function ModalPublicar({ onClose }: { onClose: () => void }) {
-  const [form,      setForm]      = useState<FormData>(FORM_INICIAL);
+function ModalPublicar({
+  onClose,
+  empleoEditar,
+}: {
+  onClose: () => void;
+  empleoEditar?: Empleo | null;
+}) {
+  const editando = !!empleoEditar;
+  const [form,      setForm]      = useState<FormData>(
+    empleoEditar
+      ? {
+          titulo:      empleoEditar.titulo,
+          empresa:     empleoEditar.empresa,
+          ubicacion:   empleoEditar.ubicacion,
+          salario:     empleoEditar.salario ?? '',
+          tipo:        (empleoEditar.tipo as TipoEmpleo) ?? 'full-time',
+          descripcion: empleoEditar.descripcion,
+          contacto:    empleoEditar.contacto ?? '',
+        }
+      : FORM_INICIAL
+  );
   const [file,      setFile]      = useState<File | null>(null);
-  const [preview,   setPreview]   = useState<string | null>(null);
+  const [preview,   setPreview]   = useState<string | null>(empleoEditar?.mediaUrl ?? null);
   const [guardando, setGuardando] = useState(false);
   const [errForm,   setErrForm]   = useState('');
   const previewRef = useRef<string | null>(null);
@@ -98,11 +119,11 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
     if (!form.titulo.trim() || !form.empresa.trim() || !form.ubicacion.trim() || !form.descripcion.trim()) {
       setErrForm('Completá todos los campos obligatorios.'); return;
     }
-    setGuardando(true);
-    setErrForm('');
+    setGuardando(true); setErrForm('');
     try {
-      let mediaUrl  = '';
-      let mediaType: 'image' | 'video' | '' = '';
+      let mediaUrl  = empleoEditar?.mediaUrl  ?? '';
+      let mediaType: 'image' | 'video' | '' = empleoEditar?.mediaType ?? '';
+
       if (file && storage) {
         try {
           const sRef = storageRef(storage, `empleos/${Date.now()}_${file.name}`);
@@ -113,7 +134,8 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
           setErrForm('No se pudo subir el archivo. Se publicará sin imagen.');
         }
       }
-      await addDoc(collection(db, 'empleos'), {
+
+      const payload = {
         titulo:      form.titulo.trim(),
         empresa:     form.empresa.trim(),
         ubicacion:   form.ubicacion.trim(),
@@ -122,13 +144,24 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
         descripcion: form.descripcion.trim(),
         contacto:    form.contacto.trim() || null,
         mediaUrl, mediaType,
-        createdAt:   serverTimestamp(),
-        uid:         auth.currentUser?.uid ?? null,
-      });
+      };
+
+      if (editando && empleoEditar) {
+        await updateDoc(doc(db, 'empleos', empleoEditar.id), {
+          ...payload,
+          editadoEn: serverTimestamp(),
+        });
+      } else {
+        await addDoc(collection(db, 'empleos'), {
+          ...payload,
+          createdAt: serverTimestamp(),
+          uid: auth.currentUser?.uid ?? null,
+        });
+      }
       onClose();
     } catch (err) {
-      console.error('[Jobs] Error al publicar:', err);
-      setErrForm('Error al publicar. Intentá de nuevo.');
+      console.error('[Jobs] Error al guardar:', err);
+      setErrForm('Error al guardar. Intentá de nuevo.');
     } finally {
       setGuardando(false);
     }
@@ -139,11 +172,14 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
+      <div
+        className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
         style={{ maxHeight: '92vh', paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">Publicar empleo</h2>
+          <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">
+            {editando ? 'Editar empleo' : 'Publicar empleo'}
+          </h2>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
@@ -197,13 +233,13 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
 
         {preview ? (
           <div className="relative rounded-2xl overflow-hidden bg-black">
-            {file?.type.startsWith('video') ? (
+            {(file?.type.startsWith('video') || empleoEditar?.mediaType === 'video') ? (
               <video src={preview} controls className="w-full max-h-48 object-cover" />
             ) : (
               <img src={preview} alt="Vista previa" className="w-full max-h-48 object-cover" />
             )}
             <button
-              onClick={() => { setFile(null); setPreview(null); }}
+              onClick={() => { setFile(null); setPreview(null); if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; } }}
               className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
             >✕</button>
           </div>
@@ -229,8 +265,10 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
           className="w-full py-4 rounded-2xl bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {guardando ? (
-            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Publicando...</>
-          ) : 'Publicar empleo'}
+            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{editando ? 'Guardando...' : 'Publicando...'}</>
+          ) : (
+            <><CheckIcon className="w-4 h-4" />{editando ? 'Guardar cambios' : 'Publicar empleo'}</>
+          )}
         </button>
       </div>
     </div>
@@ -238,14 +276,16 @@ function ModalPublicar({ onClose }: { onClose: () => void }) {
 }
 
 export default function Jobs() {
-  const [empleos,      setEmpleos]      = useState<Empleo[]>([]);
-  const [cargando,     setCargando]     = useState(true);
-  const [error,        setError]        = useState('');
-  const [filtro,       setFiltro]       = useState('todos');
-  const [busqueda,     setBusqueda]     = useState('');
-  const [isMenuOpen,   setIsMenuOpen]   = useState(false);
-  const [modalAbierto, setModalAbierto] = useState(false);
-  const [usuario,      setUsuario]      = useState<User | null>(null);
+  const [empleos,       setEmpleos]       = useState<Empleo[]>([]);
+  const [cargando,      setCargando]      = useState(true);
+  const [error,         setError]         = useState('');
+  const [filtro,        setFiltro]        = useState('todos');
+  const [busqueda,      setBusqueda]      = useState('');
+  const [isMenuOpen,    setIsMenuOpen]    = useState(false);
+  const [modalAbierto,  setModalAbierto]  = useState(false);
+  const [empleoEditar,  setEmpleoEditar]  = useState<Empleo | null>(null);
+  const [eliminandoId,  setEliminandoId]  = useState<string | null>(null);
+  const [usuario,       setUsuario]       = useState<User | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUsuario);
@@ -260,6 +300,14 @@ export default function Jobs() {
     );
     return () => unsub();
   }, []);
+
+  async function handleEliminar(empleo: Empleo) {
+    if (!usuario || usuario.uid !== empleo.uid) return;
+    setEliminandoId(null);
+    try {
+      await deleteDoc(doc(db, 'empleos', empleo.id));
+    } catch (e) { console.error('[Jobs] eliminar:', e); }
+  }
 
   const empleosFiltrados = empleos.filter((e) => {
     const coincideTipo  = filtro === 'todos' || e.tipo === filtro;
@@ -336,71 +384,104 @@ export default function Jobs() {
           </div>
         )}
 
-        {empleosFiltrados.map((empleo) => (
-          <article key={empleo.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
-            <div className="p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-[var(--sc-100)] dark:bg-[var(--sc-700)]/20 rounded-xl flex items-center justify-center shrink-0">
-                    <BriefcaseIcon className="w-6 h-6 text-[var(--sc-600)] dark:text-[var(--sc-500)]" />
+        {empleosFiltrados.map((empleo) => {
+          const esMio = usuario?.uid === empleo.uid;
+          return (
+            <article key={empleo.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-[var(--sc-100)] dark:bg-[var(--sc-700)]/20 rounded-xl flex items-center justify-center shrink-0">
+                      <BriefcaseIcon className="w-6 h-6 text-[var(--sc-600)] dark:text-[var(--sc-500)]" />
+                    </div>
+                    <div>
+                      <p className="font-black text-gray-800 dark:text-gray-100 text-sm">{empleo.titulo}</p>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs">{empleo.empresa}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-black text-gray-800 dark:text-gray-100 text-sm">{empleo.titulo}</p>
-                    <p className="text-gray-500 dark:text-gray-400 text-xs">{empleo.empresa}</p>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className={`text-[10px] font-black px-2 py-1 rounded-full ${BADGE_COLORS[empleo.tipo] ?? 'bg-gray-50 text-gray-600'}`}>
+                      {empleo.tipo?.toUpperCase()}
+                    </span>
+                    {esMio && (
+                      <>
+                        <button
+                          onClick={() => { setEmpleoEditar(empleo); setModalAbierto(true); }}
+                          className="p-1.5 rounded-full bg-blue-50 dark:bg-blue-900/20 active:scale-90 transition-transform"
+                          aria-label="Editar"
+                        >
+                          <PencilIcon className="w-3.5 h-3.5 text-blue-500" />
+                        </button>
+                        <button
+                          onClick={() => setEliminandoId(eliminandoId === empleo.id ? null : empleo.id)}
+                          className="p-1.5 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform"
+                          aria-label="Eliminar"
+                        >
+                          <TrashIcon className="w-3.5 h-3.5 text-red-500" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-                <span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${BADGE_COLORS[empleo.tipo] ?? 'bg-gray-50 text-gray-600'}`}>
-                  {empleo.tipo?.toUpperCase()}
-                </span>
-              </div>
 
-              <p className="text-gray-600 dark:text-gray-400 text-xs leading-relaxed mb-3 line-clamp-2">
-                {empleo.descripcion}
-              </p>
+                {eliminandoId === empleo.id && (
+                  <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-2xl flex items-center justify-between">
+                    <p className="text-xs text-red-700 dark:text-red-300 font-bold">¿Eliminar esta oferta?</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleEliminar(empleo)} className="text-xs bg-red-500 text-white px-3 py-1 rounded-full font-bold active:scale-95">Sí</button>
+                      <button onClick={() => setEliminandoId(null)} className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full font-bold active:scale-95">No</button>
+                    </div>
+                  </div>
+                )}
 
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <MapPinIcon className="w-3.5 h-3.5 shrink-0" />
-                    {empleo.ubicacion}
-                  </span>
-                  {empleo.salario && (
-                    <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold">
-                      <CurrencyDollarIcon className="w-3.5 h-3.5 shrink-0" />
-                      {empleo.salario}
+                <p className="text-gray-600 dark:text-gray-400 text-xs leading-relaxed mb-3 line-clamp-2">
+                  {empleo.descripcion}
+                </p>
+
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <MapPinIcon className="w-3.5 h-3.5 shrink-0" />
+                      {empleo.ubicacion}
+                    </span>
+                    {empleo.salario && (
+                      <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold">
+                        <CurrencyDollarIcon className="w-3.5 h-3.5 shrink-0" />
+                        {empleo.salario}
+                      </span>
+                    )}
+                  </div>
+                  {empleo.contacto && (
+                    <a
+                      href={empleo.contacto.includes('@') ? `mailto:${empleo.contacto}` : `https://wa.me/${empleo.contacto.replace(/\D/g,'')}`}
+                      target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1 text-xs text-[var(--sc-600)] font-bold active:scale-95 transition-transform"
+                    >
+                      <EnvelopeIcon className="w-3.5 h-3.5" />
+                      Contactar
+                    </a>
+                  )}
+                  {empleo.createdAt && (
+                    <span className="text-[10px] text-gray-300 dark:text-gray-600 ml-auto">
+                      {formatFecha(empleo.createdAt)}
                     </span>
                   )}
                 </div>
-                {empleo.contacto && (
-                  <a
-                    href={empleo.contacto.includes('@') ? `mailto:${empleo.contacto}` : `https://wa.me/${empleo.contacto.replace(/\D/g,'')}`}
-                    target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1 text-xs text-[var(--sc-600)] font-bold active:scale-95 transition-transform"
-                  >
-                    <EnvelopeIcon className="w-3.5 h-3.5" />
-                    Contactar
-                  </a>
-                )}
-                {empleo.createdAt && (
-                  <span className="text-[10px] text-gray-300 dark:text-gray-600 ml-auto">
-                    {formatFecha(empleo.createdAt)}
-                  </span>
-                )}
               </div>
-            </div>
 
-            {empleo.mediaUrl && (
-              empleo.mediaType === 'video'
-                ? <video src={empleo.mediaUrl} controls className="w-full max-h-56 object-cover bg-black" />
-                : <img src={empleo.mediaUrl} alt="Imagen del empleo" className="w-full max-h-56 object-cover" loading="lazy" />
-            )}
-          </article>
-        ))}
+              {empleo.mediaUrl && (
+                empleo.mediaType === 'video'
+                  ? <video src={empleo.mediaUrl} controls className="w-full max-h-56 object-cover bg-black" />
+                  : <img src={empleo.mediaUrl} alt="Imagen del empleo" className="w-full max-h-56 object-cover" loading="lazy" />
+              )}
+            </article>
+          );
+        })}
       </div>
 
       {usuario && (
         <button
-          onClick={() => setModalAbierto(true)}
+          onClick={() => { setEmpleoEditar(null); setModalAbierto(true); }}
           aria-label="Publicar empleo"
           className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white shadow-lg flex items-center justify-center transition-all active:scale-90"
         >
@@ -408,10 +489,15 @@ export default function Jobs() {
         </button>
       )}
 
-      {modalAbierto && <ModalPublicar onClose={() => setModalAbierto(false)} />}
+      {modalAbierto && (
+        <ModalPublicar
+          onClose={() => { setModalAbierto(false); setEmpleoEditar(null); }}
+          empleoEditar={empleoEditar}
+        />
+      )}
 
       <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-                }
+        }
