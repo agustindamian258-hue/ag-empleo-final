@@ -3,12 +3,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../app/firebase';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import {
   BuildingOfficeIcon, MapIcon, DocumentTextIcon,
   ArrowLeftOnRectangleIcon, XMarkIcon, UserCircleIcon,
   BriefcaseIcon, ShieldCheckIcon, SunIcon, MoonIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 
 interface UserData {
@@ -26,13 +27,15 @@ interface MenuProps {
 export default function Menu({ isOpen, onClose }: MenuProps) {
   const navigate = useNavigate();
   const { darkMode, toggleDarkMode } = useTheme();
-  const [userData,   setUserData]   = useState<UserData | null>(null);
-  const [errorCarga, setErrorCarga] = useState<boolean>(false);
+  const [userData,      setUserData]      = useState<UserData | null>(null);
+  const [errorCarga,    setErrorCarga]    = useState<boolean>(false);
+  const [sinMensajes,   setSinMensajes]   = useState(0);
 
   useEffect(() => {
     if (!isOpen) return;
     const user = auth.currentUser;
     if (!user) return;
+
     const fetchUserData = async () => {
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
@@ -43,6 +46,15 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
       }
     };
     fetchUserData();
+
+    // Unread messages count
+    const q = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', user.uid),
+      where('unreadBy', 'array-contains', user.uid),
+    );
+    const unsub = onSnapshot(q, (snap) => setSinMensajes(snap.size), console.error);
+    return () => unsub();
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -137,6 +149,26 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
 
         {/* Opciones */}
         <div className="flex-grow p-4 space-y-2 overflow-y-auto">
+
+          {/* Mensajes directos */}
+          <button
+            onClick={() => goTo('/messages')}
+            className="w-full flex items-center justify-between gap-4 p-4 rounded-2xl active:scale-95 transition-all border bg-teal-50 border-teal-100 dark:bg-teal-900/20 dark:border-teal-800 mb-3"
+          >
+            <div className="flex items-center gap-4">
+              <ChatBubbleLeftRightIcon className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+              <div className="text-left">
+                <p className="font-black text-sm text-teal-900 dark:text-teal-300">Mensajes</p>
+                <p className="text-xs text-teal-500">Chat directo con usuarios</p>
+              </div>
+            </div>
+            {sinMensajes > 0 && (
+              <span className="w-6 h-6 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shrink-0">
+                {sinMensajes > 9 ? '9+' : sinMensajes}
+              </span>
+            )}
+          </button>
+
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">
             Herramientas
           </p>
@@ -177,7 +209,6 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
               <p className="font-bold text-gray-700 dark:text-gray-200 text-sm">Políticas de privacidad</p>
             </button>
 
-            {/* Toggle modo oscuro */}
             <button
               onClick={toggleDarkMode}
               className="w-full flex items-center justify-between gap-4 p-4 mt-2 bg-gray-50 dark:bg-gray-800 rounded-2xl active:scale-95 transition-all border border-gray-100 dark:border-gray-700"
@@ -191,7 +222,6 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
                   {darkMode ? 'Modo claro' : 'Modo oscuro'}
                 </p>
               </div>
-              {/* Switch visual */}
               <div className={`w-12 h-6 rounded-full transition-colors relative ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}>
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${darkMode ? 'left-7' : 'left-1'}`} />
               </div>
@@ -212,4 +242,4 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
       </div>
     </div>
   );
-        }
+      }
