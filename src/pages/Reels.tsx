@@ -1,9 +1,10 @@
 // src/pages/Reels.tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
   doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove,
+  limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
@@ -40,6 +41,7 @@ interface Comment {
 
 const MAX_VIDEO_MB = 100;
 const REACCIONES   = ['❤️', '😂', '😍', '👍', '😲'];
+const PAGE_SIZE    = 5;
 
 async function crearNotificacion({ uid, titulo, mensaje, tipo }: {
   uid: string; titulo: string; mensaje: string; tipo: string;
@@ -51,8 +53,6 @@ async function crearNotificacion({ uid, titulo, mensaje, tipo }: {
     });
   } catch (e) { console.error('[Notif]', e); }
 }
-
-// ─── Selector reacción ────────────────────────────────────────────────────────
 
 function SelectorReaccionReel({ onSelect }: { onSelect: (emoji: string) => void }) {
   const [custom, setCustom] = useState(false);
@@ -80,8 +80,6 @@ function SelectorReaccionReel({ onSelect }: { onSelect: (emoji: string) => void 
   );
 }
 
-// ─── Contador comentarios ─────────────────────────────────────────────────────
-
 function ComentariosCountReel({ reelId }: { reelId: string }) {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -90,8 +88,6 @@ function ComentariosCountReel({ reelId }: { reelId: string }) {
   }, [reelId]);
   return <span className="text-white text-xs font-bold drop-shadow">{count}</span>;
 }
-
-// ─── Modal comentarios ────────────────────────────────────────────────────────
 
 function ModalComentariosReel({ reelId, reelUserId, onClose }: {
   reelId: string; reelUserId: string; onClose: () => void;
@@ -124,17 +120,12 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
     const ref   = doc(db, 'reels', reelId, 'comments', comment.id);
     const liked = comment.likes?.includes(user.uid);
     try {
-      await updateDoc(ref, {
-        likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid),
+      await updateDoc(ref, { likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
+      if (!liked) await crearNotificacion({
+        uid: comment.userId,
+        titulo: `❤️ ${user.displayName ?? 'Alguien'} le gustó tu comentario`,
+        mensaje: comment.text.slice(0, 60), tipo: 'like',
       });
-      if (!liked) {
-        await crearNotificacion({
-          uid:     comment.userId,
-          titulo:  `❤️ ${user.displayName ?? 'Alguien'} le gustó tu comentario`,
-          mensaje: comment.text.slice(0, 60),
-          tipo:    'like',
-        });
-      }
     } catch (e) { console.error('[Reels] like comentario:', e); }
   }
 
@@ -143,22 +134,17 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
     setEnviando(true);
     try {
       await addDoc(collection(db, 'reels', reelId, 'comments'), {
-        text:      texto.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;'),
-        userId:    user.uid,
-        userName:  user.displayName ?? 'Usuario',
-        userPhoto: user.photoURL    ?? '',
-        likes:     [],
-        replyTo:   respondiendo?.nombre ?? null,
-        createdAt: serverTimestamp(),
+        text: texto.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+        userId: user.uid, userName: user.displayName ?? 'Usuario',
+        userPhoto: user.photoURL ?? '', likes: [],
+        replyTo: respondiendo?.nombre ?? null, createdAt: serverTimestamp(),
       });
       await crearNotificacion({
-        uid:     reelUserId,
-        titulo:  `💬 ${user.displayName ?? 'Alguien'} comentó tu reel`,
-        mensaje: texto.trim().slice(0, 80),
-        tipo:    'like',
+        uid: reelUserId,
+        titulo: `💬 ${user.displayName ?? 'Alguien'} comentó tu reel`,
+        mensaje: texto.trim().slice(0, 80), tipo: 'like',
       });
-      setTexto('');
-      setRespondiendo(null);
+      setTexto(''); setRespondiendo(null);
     } catch (e) { console.error('[Reels] comentar:', e); }
     finally { setEnviando(false); }
   }
@@ -168,10 +154,7 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
       className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div
-        className="w-full max-w-lg bg-gray-900 rounded-t-3xl flex flex-col animate-slide-up"
-        style={{ maxHeight: '75vh' }}
-      >
+      <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl flex flex-col animate-slide-up" style={{ maxHeight: '75vh' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
           <h3 className="font-black text-white">
             Comentarios {comments.length > 0 && <span className="text-gray-400 font-normal text-sm">({comments.length})</span>}
@@ -180,7 +163,6 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
             <XMarkIcon className="w-5 h-5 text-gray-400" />
           </button>
         </div>
-
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {comments.length === 0 && (
             <div className="text-center py-10 text-gray-600">
@@ -189,8 +171,8 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
             </div>
           )}
           {comments.map((c) => {
-            const avatar  = c.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.userName || 'U')}&background=7c3aed&color=fff`;
-            const likedC  = c.likes?.includes(user?.uid ?? '');
+            const avatar = c.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.userName || 'U')}&background=7c3aed&color=fff`;
+            const likedC = c.likes?.includes(user?.uid ?? '');
             return (
               <div key={c.id} className={`flex gap-3 ${c.replyTo ? 'ml-8' : ''}`}>
                 <img src={avatar} alt={c.userName} className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5" />
@@ -199,26 +181,14 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
                     <p className="font-black text-xs text-white">{c.userName}</p>
                     <p className="text-sm text-gray-300 leading-snug">{c.text}</p>
                   </div>
-                  {/* Acciones comentario */}
                   <div className="flex items-center gap-4 mt-1 px-1">
-                    <button
-                      onClick={() => handleLikeComentario(c)}
-                      className="flex items-center gap-1 active:scale-90 transition-transform"
-                    >
-                      {likedC
-                        ? <HeartSolid   className="w-3.5 h-3.5 text-red-500" />
-                        : <HeartOutline className="w-3.5 h-3.5 text-gray-500" />
-                      }
+                    <button onClick={() => handleLikeComentario(c)} className="flex items-center gap-1 active:scale-90 transition-transform">
+                      {likedC ? <HeartSolid className="w-3.5 h-3.5 text-red-500" /> : <HeartOutline className="w-3.5 h-3.5 text-gray-500" />}
                       {(c.likes?.length || 0) > 0 && (
-                        <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-500'}`}>
-                          {c.likes?.length}
-                        </span>
+                        <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-500'}`}>{c.likes?.length}</span>
                       )}
                     </button>
-                    <button
-                      onClick={() => handleResponder(c)}
-                      className="text-xs text-gray-500 font-bold active:scale-95 transition-transform"
-                    >
+                    <button onClick={() => handleResponder(c)} className="text-xs text-gray-500 font-bold active:scale-95 transition-transform">
                       Responder
                     </button>
                   </div>
@@ -227,14 +197,11 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
             );
           })}
         </div>
-
         {user && (
           <div className="px-4 py-3 border-t border-gray-800 space-y-2">
             {respondiendo && (
               <div className="flex items-center justify-between bg-purple-900/30 rounded-xl px-3 py-1.5">
-                <span className="text-xs text-purple-400 font-bold">
-                  Respondiendo a @{respondiendo.nombre}
-                </span>
+                <span className="text-xs text-purple-400 font-bold">Respondiendo a @{respondiendo.nombre}</span>
                 <button onClick={() => { setRespondiendo(null); setTexto(''); }} className="text-purple-400 text-xs">✕</button>
               </div>
             )}
@@ -244,8 +211,7 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
                 alt="" className="w-8 h-8 rounded-full object-cover shrink-0"
               />
               <input
-                ref={inputRef}
-                value={texto}
+                ref={inputRef} value={texto}
                 onChange={(e) => setTexto(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleEnviar()}
                 placeholder={respondiendo ? `Responder a @${respondiendo.nombre}...` : 'Escribí un comentario...'}
@@ -253,8 +219,7 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
                 className="flex-1 bg-gray-800 rounded-full px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none"
               />
               <button
-                onClick={handleEnviar}
-                disabled={enviando || !texto.trim()}
+                onClick={handleEnviar} disabled={enviando || !texto.trim()}
                 className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center disabled:opacity-40 active:scale-90 transition-transform"
               >
                 <PaperAirplaneIcon className="w-4 h-4 text-white" />
@@ -266,8 +231,6 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
     </div>
   );
 }
-
-// ─── Reels principal ──────────────────────────────────────────────────────────
 
 export default function Reels() {
   const user = auth.currentUser;
@@ -284,26 +247,59 @@ export default function Reels() {
   const [subiendo,       setSubiendo]       = useState(false);
   const [progreso,       setProgreso]       = useState(0);
   const [error,          setError]          = useState('');
+  const [lastDoc,        setLastDoc]        = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hayMas,         setHayMas]         = useState(true);
+  const [cargandoMas,    setCargandoMas]    = useState(false);
+
   const previewRef = useRef<string | null>(null);
   const videoRefs  = useRef<(HTMLVideoElement | null)[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Carga inicial con paginación
   useEffect(() => {
-    const q = query(collection(db, 'reels'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'reels'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
     const unsub = onSnapshot(q,
-      (snap) => setReels(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Reel))),
-      (err)  => console.error('[Reels]', err)
+      (snap) => {
+        setReels(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Reel)));
+        setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
+        setHayMas(snap.docs.length === PAGE_SIZE);
+      },
+      (err) => console.error('[Reels]', err)
     );
     return () => unsub();
   }, []);
 
+  const cargarMas = useCallback(async () => {
+    if (!lastDoc || cargandoMas || !hayMas) return;
+    setCargandoMas(true);
+    try {
+      const q    = query(collection(db, 'reels'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE));
+      const snap = await getDocs(q);
+      const nuevos = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Reel));
+      setReels((prev) => [...prev, ...nuevos]);
+      setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
+      setHayMas(snap.docs.length === PAGE_SIZE);
+    } catch (e) { console.error('[Reels] cargarMas:', e); }
+    finally { setCargandoMas(false); }
+  }, [lastDoc, cargandoMas, hayMas]);
+
+  // Auto-play con IntersectionObserver + cargar más al llegar al final
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
-    videoRefs.current.forEach((vid) => {
+    videoRefs.current.forEach((vid, i) => {
       if (!vid) return;
       const obs = new IntersectionObserver(
         ([entry]) => {
-          if (entry.isIntersecting) { vid.play().catch(() => {}); }
-          else { vid.pause(); vid.currentTime = 0; }
+          if (entry.isIntersecting) {
+            vid.play().catch(() => {});
+            // Si es el penúltimo, cargamos más
+            if (i === reels.length - 2 && hayMas && !cargandoMas) {
+              cargarMas();
+            }
+          } else {
+            vid.pause();
+            vid.currentTime = 0;
+          }
         },
         { threshold: 0.7 }
       );
@@ -311,7 +307,7 @@ export default function Reels() {
       observers.push(obs);
     });
     return () => observers.forEach((o) => o.disconnect());
-  }, [reels]);
+  }, [reels, hayMas, cargandoMas, cargarMas]);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
@@ -381,7 +377,6 @@ export default function Reels() {
 
   return (
     <div className="bg-black min-h-screen pb-20">
-
       <header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-5 py-4 bg-gradient-to-b from-black/80 to-transparent">
         <h1 className="text-xl font-black text-white tracking-tighter">Reels</h1>
         {user && (
@@ -391,7 +386,7 @@ export default function Reels() {
         )}
       </header>
 
-      <div className="h-screen overflow-y-scroll snap-y snap-mandatory scrollbar-none">
+      <div ref={containerRef} className="h-screen overflow-y-scroll snap-y snap-mandatory scrollbar-none">
         {reels.length === 0 && (
           <div className="h-screen flex flex-col items-center justify-center text-white/40">
             <p className="text-5xl mb-3">🎬</p>
@@ -424,7 +419,6 @@ export default function Reels() {
               </div>
 
               <div className="absolute right-4 bottom-32 flex flex-col items-center gap-6">
-                {/* Reacción */}
                 <div className="relative flex flex-col items-center gap-1">
                   <button
                     onClick={() => setReaccionandoId(reaccionandoId === r.id ? null : r.id)}
@@ -438,7 +432,6 @@ export default function Reels() {
                   )}
                 </div>
 
-                {/* Comentar */}
                 <button
                   onClick={() => { setComentandoId(r.id); setComentandoUid(r.userId); }}
                   className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
@@ -447,7 +440,6 @@ export default function Reels() {
                   <ComentariosCountReel reelId={r.id} />
                 </button>
 
-                {/* Compartir */}
                 <button
                   onClick={() => handleCompartir(r)}
                   className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
@@ -458,9 +450,22 @@ export default function Reels() {
             </div>
           );
         })}
+
+        {/* Indicador cargando más */}
+        {cargandoMas && (
+          <div className="h-20 flex items-center justify-center snap-start">
+            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {/* Sin más reels */}
+        {!hayMas && reels.length > 0 && (
+          <div className="h-20 flex items-center justify-center snap-start">
+            <p className="text-white/30 text-xs font-bold">Ya viste todos los reels</p>
+          </div>
+        )}
       </div>
 
-      {/* Modal subir */}
       {modalSubir && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
@@ -528,4 +533,4 @@ export default function Reels() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-  }
+                    }
