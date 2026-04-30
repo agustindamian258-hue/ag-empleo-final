@@ -14,8 +14,10 @@ import SearchUsers   from '../pages/SearchUsers';
 import MapPage       from '../pages/MapPage';
 import Privacidad    from '../pages/Privacidad';
 import Notifications from '../pages/Notifications';
+import Messages      from '../pages/Messages';
+import Chat          from '../pages/Chat';
 
-interface AppRoutesProps    { user: User | null; loading: boolean; }
+interface AppRoutesProps     { user: User | null; loading: boolean; }
 interface ProtectedRouteProps { user: User | null; loading: boolean; children: React.ReactElement; }
 
 function LoadingScreen() {
@@ -56,6 +58,8 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
         <Route path="/search"         element={PR(<SearchUsers />)}   />
         <Route path="/privacidad"     element={PR(<Privacidad />)}    />
         <Route path="/notificaciones" element={PR(<Notifications />)} />
+        <Route path="/messages"       element={PR(<Messages />)}      />
+        <Route path="/chat/:chatId"   element={PR(<Chat />)}          />
 
         <Route path="*" element={<Navigate to={user ? '/' : '/login'} replace />} />
       </Routes>
