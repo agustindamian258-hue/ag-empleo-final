@@ -6,7 +6,7 @@ import {
   doc, getDoc, collection, query, where,
   onSnapshot, setDoc, deleteDoc, serverTimestamp,
 } from 'firebase/firestore';
-import { ArrowLeftIcon, HeartIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, HeartIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import Navbar from '../components/Navbar';
 import Menu  from '../components/Menu';
 
@@ -32,33 +32,29 @@ export default function UserProfile() {
   const [siguiendo_n,   setSiguiendoN]    = useState(0);
   const [isMenuOpen,    setIsMenuOpen]    = useState(false);
   const [cargando,      setCargando]      = useState(true);
+  const [iniciandoChat, setIniciandoChat] = useState(false);
 
   const esPropioPerfil = me?.uid === uid;
 
   useEffect(() => {
     if (!uid) return;
 
-    // Cargar datos del usuario
     getDoc(doc(db, 'users', uid)).then((snap) => {
       if (snap.exists()) setUserData(snap.data() as UserData);
       setCargando(false);
     });
 
-    // Posts del usuario
     const qPosts = query(collection(db, 'posts'), where('userId', '==', uid));
     const unsubPosts = onSnapshot(qPosts, (snap) =>
       setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post)))
     );
 
-    // Seguidores
     const qSeg = query(collection(db, 'follows'), where('followingId', '==', uid));
     const unsubSeg = onSnapshot(qSeg, (snap) => setSeguidores(snap.size));
 
-    // Siguiendo
     const qSig = query(collection(db, 'follows'), where('followerId', '==', uid));
     const unsubSig = onSnapshot(qSig, (snap) => setSiguiendoN(snap.size));
 
-    // ¿Yo lo sigo?
     if (me && !esPropioPerfil) {
       const followRef = doc(db, 'follows', `${me.uid}_${uid}`);
       const unsubFollow = onSnapshot(followRef, (snap) => setSiguiendo(snap.exists()));
@@ -82,6 +78,45 @@ export default function UserProfile() {
     }
   }
 
+  async function iniciarChat() {
+    if (!me || !uid || iniciandoChat) return;
+    setIniciandoChat(true);
+    try {
+      const chatId = [me.uid, uid].sort().join('_');
+      const chatRef = doc(db, 'chats', chatId);
+      const snap = await getDoc(chatRef);
+      if (!snap.exists()) {
+        const [meSnap, otherSnap] = await Promise.all([
+          getDoc(doc(db, 'users', me.uid)),
+          getDoc(doc(db, 'users', uid)),
+        ]);
+        const meData    = meSnap.exists()    ? meSnap.data()    : {};
+        const otherData = otherSnap.exists() ? otherSnap.data() : {};
+        await setDoc(chatRef, {
+          participants: [me.uid, uid].sort(),
+          participantData: {
+            [me.uid]: {
+              name:  meData.name    || me.displayName || 'Yo',
+              photo: meData.photo   || me.photoURL    || '',
+            },
+            [uid]: {
+              name:  otherData.name  || userData?.name || 'Usuario',
+              photo: otherData.photo || userData?.photo || '',
+            },
+          },
+          lastMessage:   '',
+          lastMessageAt: serverTimestamp(),
+          unreadBy:      [],
+        });
+      }
+      navigate(`/chat/${chatId}`);
+    } catch (e) {
+      console.error('[UserProfile] iniciarChat', e);
+    } finally {
+      setIniciandoChat(false);
+    }
+  }
+
   if (cargando) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
       <div className="w-8 h-8 border-4 border-[var(--sc-600)] border-t-transparent rounded-full animate-spin" />
@@ -94,7 +129,6 @@ export default function UserProfile() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
 
-      {/* Header */}
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-5 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => navigate(-1)} className="p-2 rounded-full bg-gray-100 dark:bg-gray-800 active:scale-90 transition-transform">
           <ArrowLeftIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
@@ -106,7 +140,6 @@ export default function UserProfile() {
 
       <div className="max-w-lg mx-auto px-4 pt-6 space-y-4">
 
-        {/* Info */}
         <div className="flex flex-col items-center gap-3">
           <img src={avatarUrl} alt="foto" className="w-24 h-24 rounded-full object-cover ring-4 ring-purple-100 dark:ring-purple-900 shadow-md" />
           <div className="text-center">
@@ -131,25 +164,34 @@ export default function UserProfile() {
             </div>
           </div>
 
-          {/* Bio */}
           {userData?.bio && (
             <p className="text-sm text-gray-600 dark:text-gray-300 text-center leading-relaxed px-4">
               {userData.bio}
             </p>
           )}
 
-          {/* Botón follow */}
+          {/* Acciones */}
           {!esPropioPerfil && me && (
-            <button
-              onClick={handleFollow}
-              className={`px-8 py-2.5 rounded-full font-black text-sm transition-all active:scale-95 ${
-                siguiendo
-                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600'
-                  : 'bg-purple-600 text-white shadow-md'
-              }`}
-            >
-              {siguiendo ? 'Dejár de seguir' : 'Seguir'}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleFollow}
+                className={`px-7 py-2.5 rounded-full font-black text-sm transition-all active:scale-95 ${
+                  siguiendo
+                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600'
+                    : 'bg-purple-600 text-white shadow-md'
+                }`}
+              >
+                {siguiendo ? 'Dejár de seguir' : 'Seguir'}
+              </button>
+              <button
+                onClick={iniciarChat}
+                disabled={iniciandoChat}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-sm bg-teal-500 text-white shadow-md active:scale-95 transition-all disabled:opacity-60"
+              >
+                <ChatBubbleLeftRightIcon className="w-4 h-4" />
+                Mensaje
+              </button>
+            </div>
           )}
 
           {esPropioPerfil && (
@@ -199,4 +241,4 @@ export default function UserProfile() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-}
+      }
