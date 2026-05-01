@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, auth, storage } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc, limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData, where,
+  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc, limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData, where, getCountFromServer,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
@@ -42,11 +42,12 @@ interface FeedProps {
   onPublished?: () => void;
 }
 
-const MAX_FILE_SIZE_MB = 50;
-const MAX_TEXT_LENGTH  = 500;
-const ALLOWED_TYPES    = ['image/', 'video/'];
-const REACCIONES       = ['❤️', '😂', '😍', '👍', '😲'];
-const PAGE_SIZE        = 10;
+const MAX_FILE_SIZE_MB   = 50;
+const MAX_TEXT_LENGTH    = 500;
+const ALLOWED_TYPES      = ['image/', 'video/'];
+const REACCIONES         = ['❤️', '😂', '😍', '👍', '😲'];
+const PAGE_SIZE          = 10;
+const REPORTES_LIMITE    = 5;
 
 function sanitizeText(input: string): string {
   return input.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
@@ -272,14 +273,11 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const [editTexto,      setEditTexto]      = useState('');
   const [guardandoEdit,  setGuardandoEdit]  = useState(false);
 
-  // Filtro seguidos
   const [soloSeguidos,   setSoloSeguidos]   = useState(false);
   const [siguiendoUids,  setSiguiendoUids]  = useState<string[]>([]);
-  const [cargandoFiltro, setCargandoFiltro] = useState(false);
 
   const previewUrlRef = useRef<string | null>(null);
 
-  // Cargar UIDs seguidos
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, 'follows'), where('followerId', '==', user.uid));
@@ -297,7 +295,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
   }, []);
 
-  // Recarga posts cuando cambia el filtro
   useEffect(() => {
     setPosts([]);
     setLastDoc(null);
@@ -457,13 +454,52 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     }
   };
 
+  // Auto-eliminación: si llega a REPORTES_LIMITE reportes se elimina solo
   const handleReportar = async (postId: string) => {
     if (!user) return;
     setReportandoId(null);
     try {
+      // Verificar que el usuario no haya reportado ya este post
+      const qYaReporto = query(
+        collection(db, 'reports'),
+        where('postId', '==', postId),
+        where('reportadoPor', '==', user.uid),
+      );
+      const yaReporto = await getDocs(qYaReporto);
+      if (!yaReporto.empty) return; // Ya reportó, no duplicar
+
+      // Agregar el reporte
       await addDoc(collection(db, 'reports'), {
-        postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
+        postId,
+        reportadoPor: user.uid,
+        creadoEn:     serverTimestamp(),
+        revisado:     false,
       });
+
+      // Contar total de reportes para este post
+      const qReportes = query(
+        collection(db, 'reports'),
+        where('postId', '==', postId),
+      );
+      const snapReportes = await getCountFromServer(qReportes);
+      const totalReportes = snapReportes.data().count;
+
+      // Si llega al límite, eliminar el post automáticamente
+      if (totalReportes >= REPORTES_LIMITE) {
+        const postSnap = await getDoc(doc(db, 'posts', postId));
+        if (postSnap.exists()) {
+          const postData = postSnap.data();
+          // Eliminar media de Storage si existe
+          if (postData.mediaUrl) {
+            try {
+              const url  = new URL(postData.mediaUrl);
+              const path = decodeURIComponent(url.pathname.split('/o/')[1].split('?')[0]);
+              await deleteObject(storageRef(storage, path));
+            } catch { /* non-critical */ }
+          }
+          await deleteDoc(doc(db, 'posts', postId));
+        }
+      }
     } catch (e) { console.error('[Feed] reportar:', e); }
   };
 
@@ -483,7 +519,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         </div>
       )}
 
-      {/* Toggle Todos / Siguiendo */}
       <div className="flex gap-2 pb-1">
         <button
           onClick={() => setSoloSeguidos(false)}
@@ -729,4 +764,4 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-                }
+  }
