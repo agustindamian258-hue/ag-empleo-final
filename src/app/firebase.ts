@@ -1,4 +1,3 @@
-// src/app/firebase.ts
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -37,3 +36,6 @@ export const db        = getFirestore(app);
 export const storage   = getStorage(app);
 export const analytics = getAnalytics(app);
 export { logEvent };
+
+export const CLOUDINARY_CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME ?? "";
+export const CLOUDINARY_UPLOAD_PRESET = "ml_default";
