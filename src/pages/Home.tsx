@@ -4,17 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import FloatingAI from '../components/FloatingAI';
+import Feed from '../components/Feed';
 
 export default function Home() {
-  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
-  const { user, toggleMode } = useTheme();
+  const [isMenuOpen,    setIsMenuOpen]    = useState<boolean>(false);
+  const [isPublishOpen, setIsPublishOpen] = useState<boolean>(false);
+  const { user } = useTheme();
   const navigate = useNavigate();
   const nombre = user?.displayName?.split(' ')[0] || 'Bienvenido';
-
-  const handleSwitch = () => {
-    toggleMode();
-    navigate('/social');
-  };
 
   return (
     <div className="relative min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -28,7 +25,7 @@ export default function Home() {
           </p>
         </div>
         <button
-          onClick={handleSwitch}
+          onClick={() => navigate('/social')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all"
           style={{
             background: 'linear-gradient(135deg, #1d4ed8, #2563eb)',
@@ -40,33 +37,36 @@ export default function Home() {
         </button>
       </header>
 
-      <main className="px-4 pt-6 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <a href="/jobs" className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-4 flex flex-col gap-2 shadow-sm active:scale-95 transition-transform">
-            <span className="text-2xl">💼</span>
-            <p className="font-black text-gray-800 dark:text-white text-sm">Empleos</p>
-            <p className="text-xs text-gray-400">Ofertas de trabajo</p>
-          </a>
-          <a href="/companies" className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-4 flex flex-col gap-2 shadow-sm active:scale-95 transition-transform">
-            <span className="text-2xl">🏢</span>
-            <p className="font-black text-gray-800 dark:text-white text-sm">Empresas A-Z</p>
-            <p className="text-xs text-gray-400">Directorio completo</p>
-          </a>
-          <a href="/cv" className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-4 flex flex-col gap-2 shadow-sm active:scale-95 transition-transform">
-            <span className="text-2xl">📄</span>
-            <p className="font-black text-gray-800 dark:text-white text-sm">Generador CV</p>
-            <p className="text-xs text-gray-400">Creá tu curriculum</p>
-          </a>
-          <a href="/mapa" className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-4 flex flex-col gap-2 shadow-sm active:scale-95 transition-transform">
-            <span className="text-2xl">🗺️</span>
-            <p className="font-black text-gray-800 dark:text-white text-sm">Mapa Changas</p>
-            <p className="text-xs text-gray-400">Trabajos cerca tuyo</p>
-          </a>
-        </div>
+      <main className="px-4 pt-4">
+        <Feed showCompose={false} zona="social" />
       </main>
 
+      {isPublishOpen && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/60 flex items-end"
+          onClick={() => setIsPublishOpen(false)}
+        >
+          <div
+            className="w-full bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-4 pb-16 shadow-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-4" />
+            <p className="text-base font-black text-blue-700 dark:text-blue-400 mb-4">Nueva publicación</p>
+            <Feed
+              showCompose={true}
+              soloCompose={true}
+              zona="social"
+              onPublished={() => setIsPublishOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
       <FloatingAI />
-      <Navbar onMenuClick={() => setIsMenuOpen(true)} />
+      <Navbar
+        onMenuClick={() => setIsMenuOpen(true)}
+        onPublishClick={() => setIsPublishOpen(true)}
+      />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
