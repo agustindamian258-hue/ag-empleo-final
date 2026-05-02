@@ -10,14 +10,9 @@ import Stories from '../components/Stories';
 export default function FeedPage() {
   const [isMenuOpen,    setIsMenuOpen]    = useState(false);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
-  const { user, toggleMode } = useTheme();
+  const { user } = useTheme();
   const navigate = useNavigate();
   const nombre = user?.displayName?.split(' ')[0] || 'Bienvenido';
-
-  const handleSwitch = () => {
-    toggleMode();
-    navigate('/');
-  };
 
   return (
     <div className="relative min-h-screen bg-gray-100 dark:bg-gray-950 pb-24">
@@ -28,17 +23,32 @@ export default function FeedPage() {
             <h1 className="text-2xl font-black text-purple-700 dark:text-purple-400 tracking-tighter">Social</h1>
             <p className="text-gray-400 dark:text-gray-500 text-xs">Hola {nombre}, ¿qué está pasando?</p>
           </div>
-          <button
-            onClick={handleSwitch}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all"
-            style={{
-              background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
-              boxShadow: '0 3px 12px rgba(147,51,234,0.4)',
-            }}
-          >
-            <span className="text-[11px]">💼</span>
-            <span className="text-[10px] font-black text-white">Ir a Empleo</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/notificaciones')}
+              className="p-2 rounded-full bg-purple-50 dark:bg-purple-900/20 active:scale-95 transition-transform"
+            >
+              🔔
+            </button>
+            <button
+              onClick={() => navigate('/reels')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all bg-purple-100 dark:bg-purple-900/30"
+            >
+              <span className="text-[11px]">🎬</span>
+              <span className="text-[10px] font-black text-purple-700 dark:text-purple-400">Reels</span>
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all"
+              style={{
+                background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+                boxShadow: '0 3px 12px rgba(147,51,234,0.4)',
+              }}
+            >
+              <span className="text-[11px]">💼</span>
+              <span className="text-[10px] font-black text-white">Empleo</span>
+            </button>
+          </div>
         </div>
         <Stories />
       </header>
