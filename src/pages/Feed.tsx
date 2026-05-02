@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import FloatingAI from '../components/FloatingAI';
@@ -9,9 +10,14 @@ import Stories from '../components/Stories';
 export default function FeedPage() {
   const [isMenuOpen,    setIsMenuOpen]    = useState(false);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
-  const { user } = useTheme();
-
+  const { user, toggleMode } = useTheme();
+  const navigate = useNavigate();
   const nombre = user?.displayName?.split(' ')[0] || 'Bienvenido';
+
+  const handleSwitch = () => {
+    toggleMode();
+    navigate('/');
+  };
 
   return (
     <div className="relative min-h-screen bg-gray-100 dark:bg-gray-950 pb-24">
@@ -22,9 +28,17 @@ export default function FeedPage() {
             <h1 className="text-2xl font-black text-purple-700 dark:text-purple-400 tracking-tighter">Social</h1>
             <p className="text-gray-400 dark:text-gray-500 text-xs">Hola {nombre}, ¿qué está pasando?</p>
           </div>
-          <span className="text-[10px] font-black px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
-            🌐 Social
-          </span>
+          <button
+            onClick={handleSwitch}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all"
+            style={{
+              background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+              boxShadow: '0 3px 12px rgba(147,51,234,0.4)',
+            }}
+          >
+            <span className="text-[11px]">💼</span>
+            <span className="text-[10px] font-black text-white">Ir a Empleo</span>
+          </button>
         </div>
         <Stories />
       </header>
@@ -33,7 +47,6 @@ export default function FeedPage() {
         <FeedComponent showCompose={false} zona="social" />
       </main>
 
-      {/* Popup publicar — solo compose, sin feed */}
       {isPublishOpen && (
         <div
           className="fixed inset-0 z-[200] bg-black/60 flex items-end"
