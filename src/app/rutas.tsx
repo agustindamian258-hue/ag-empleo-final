@@ -1,6 +1,7 @@
-// src/app/rutas.tsx
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { User } from 'firebase/auth';
+import { useEffect } from 'react';
+import { useTheme } from '../context/ThemeContext';
 import Home          from '../pages/Home';
 import Jobs          from '../pages/Jobs';
 import Companies     from '../pages/Companies';
@@ -17,7 +18,7 @@ import Notifications from '../pages/Notifications';
 import Messages      from '../pages/Messages';
 import Chat          from '../pages/Chat';
 
-interface AppRoutesProps     { user: User | null; loading: boolean; }
+interface AppRoutesProps      { user: User | null; loading: boolean; }
 interface ProtectedRouteProps { user: User | null; loading: boolean; children: React.ReactElement; }
 
 function LoadingScreen() {
@@ -36,6 +37,21 @@ function ProtectedRoute({ user, loading, children }: ProtectedRouteProps) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
+const RUTAS_SOCIAL = ['/social', '/reels', '/search'];
+
+function SyncMode() {
+  const location = useLocation();
+  const { isSocialMode, toggleMode } = useTheme();
+
+  useEffect(() => {
+    const enSocial = RUTAS_SOCIAL.some((r) => location.pathname.startsWith(r));
+    if (enSocial && !isSocialMode) toggleMode();
+    if (!enSocial && isSocialMode) toggleMode();
+  }, [location.pathname]);
+
+  return null;
+}
+
 export default function AppRoutes({ user, loading }: AppRoutesProps) {
   const PR = (el: React.ReactElement) => (
     <ProtectedRoute user={user} loading={loading}>{el}</ProtectedRoute>
@@ -43,6 +59,7 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
 
   return (
     <BrowserRouter>
+      <SyncMode />
       <Routes>
         <Route path="/login" element={loading ? <LoadingScreen /> : !user ? <Login /> : <Navigate to="/" replace />} />
 
