@@ -764,4 +764,4 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-  }
+                                                                               }
