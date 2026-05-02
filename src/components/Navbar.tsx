@@ -1,16 +1,12 @@
-// src/components/Navbar.tsx
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../app/firebase';
 import { useTheme } from '../context/ThemeContext';
 import {
-  Bars3Icon,
-  PlusIcon,
-  BellIcon,
-  HomeIcon,
-  MagnifyingGlassIcon,
-  ChatBubbleLeftEllipsisIcon,
+  Bars3Icon, PlusIcon, BellIcon, HomeIcon,
+  MagnifyingGlassIcon, ChatBubbleLeftEllipsisIcon,
+  FilmIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavbarProps {
@@ -28,7 +24,6 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
 
   useEffect(() => {
     if (!user) return;
-
     const qNotif = query(
       collection(db, 'notifications'),
       where('uid', '==', user.uid),
@@ -56,39 +51,29 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
   };
 
   const isActive = (path: string) => location.pathname === path;
-
   const modeColor = isSocialMode ? '#9333ea' : '#2563eb';
   const modeBg    = isSocialMode ? 'rgba(147,51,234,0.12)' : 'rgba(37,99,235,0.12)';
 
-  const iconClass = (path: string) =>
-    `w-[22px] h-[22px] transition-all duration-200 ${
-      isActive(path) ? '' : 'text-gray-400 dark:text-gray-500'
-    }`;
+  const iconStyle = (path: string) => ({
+    color: isActive(path) ? modeColor : '#9ca3af',
+  });
 
   return (
     <>
-      {/* Pill flotante switch modo */}
-      <div
-        className="fixed z-[101] left-1/2"
-        style={{ bottom: '72px', transform: 'translateX(-50%)' }}
-      >
+      {/* Pill flotante switch */}
+      <div className="fixed z-[101] left-1/2" style={{ bottom: '72px', transform: 'translateX(-50%)' }}>
         <button
           onClick={handleSwitch}
-          aria-label={`Cambiar a modo ${isSocialMode ? 'Empleo' : 'Social'}`}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '7px 16px',
-            borderRadius: '999px',
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '7px 16px', borderRadius: '999px',
             background: isSocialMode
               ? 'linear-gradient(135deg, #7c3aed, #9333ea)'
               : 'linear-gradient(135deg, #1d4ed8, #2563eb)',
             boxShadow: isSocialMode
               ? '0 4px 20px rgba(147,51,234,0.5)'
               : '0 4px 20px rgba(37,99,235,0.5)',
-            border: 'none',
-            cursor: 'pointer',
+            border: 'none', cursor: 'pointer',
             opacity: switching ? 0.6 : 1,
             transform: switching ? 'scale(0.93)' : 'scale(1)',
             transition: 'all 0.18s cubic-bezier(0.34,1.56,0.64,1)',
@@ -111,8 +96,6 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           boxShadow: '0 -4px 24px rgba(0,0,0,0.08)',
           transition: 'border-color 0.3s ease',
         }}
-        role="navigation"
-        aria-label="Navegación principal"
       >
         <div className="flex justify-between items-center px-3 pt-2 pb-3">
 
@@ -125,14 +108,14 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
             <span className="text-[9px] text-gray-400">menú</span>
           </button>
 
-          {/* Inicio / Buscar */}
+          {/* 2do ícono — según modo */}
           {isSocialMode ? (
             <NavLink to="/search" label="Buscar" active={isActive('/search')} color={modeColor} bg={modeBg}>
-              <MagnifyingGlassIcon className={iconClass('/search')} style={isActive('/search') ? { color: modeColor } : {}} />
+              <MagnifyingGlassIcon className="w-[22px] h-[22px]" style={iconStyle('/search')} />
             </NavLink>
           ) : (
             <NavLink to="/" label="Inicio" active={isActive('/')} color={modeColor} bg={modeBg}>
-              <HomeIcon className={iconClass('/')} style={isActive('/') ? { color: modeColor } : {}} />
+              <HomeIcon className="w-[22px] h-[22px]" style={iconStyle('/')} />
             </NavLink>
           )}
 
@@ -140,23 +123,17 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           <div className="flex flex-col items-center" style={{ marginTop: '-22px' }}>
             <button
               onClick={isSocialMode ? onPublishClick : () => navigate('/jobs')}
-              aria-label={isSocialMode ? 'Nueva publicación' : 'Ver empleos'}
               style={{
-                width: 52,
-                height: 52,
-                borderRadius: '50%',
+                width: 52, height: 52, borderRadius: '50%',
                 background: isSocialMode
                   ? 'linear-gradient(135deg, #7c3aed, #9333ea)'
                   : 'linear-gradient(135deg, #1d4ed8, #2563eb)',
                 boxShadow: isSocialMode
                   ? '0 6px 20px rgba(147,51,234,0.45)'
                   : '0 6px 20px rgba(37,99,235,0.45)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: '3px solid white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '3px solid white', cursor: 'pointer',
                 transition: 'all 0.2s cubic-bezier(0.34,1.56,0.64,1)',
-                cursor: 'pointer',
               }}
               className="active:scale-90 dark:[border-color:#111827]"
             >
@@ -167,36 +144,32 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
             </span>
           </div>
 
-          {/* Mensajes */}
-          <NavLink to="/messages" label="Mensajes" active={isActive('/messages')} color={modeColor} bg={modeBg}>
-            <div className="relative">
-              <ChatBubbleLeftEllipsisIcon
-                className={iconClass('/messages')}
-                style={isActive('/messages') ? { color: modeColor } : {}}
-              />
-              {sinMensajes > 0 && (
-                <span
-                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
-                  style={{ width: 16, height: 16, fontSize: 9, background: '#ef4444', boxShadow: '0 2px 6px rgba(239,68,68,0.5)' }}
-                >
-                  {sinMensajes > 9 ? '9+' : sinMensajes}
-                </span>
-              )}
-            </div>
-          </NavLink>
+          {/* Reels — solo en Social / Mensajes — solo en Empleo */}
+          {isSocialMode ? (
+            <NavLink to="/reels" label="Reels" active={isActive('/reels')} color={modeColor} bg={modeBg}>
+              <FilmIcon className="w-[22px] h-[22px]" style={iconStyle('/reels')} />
+            </NavLink>
+          ) : (
+            <NavLink to="/messages" label="Mensajes" active={isActive('/messages')} color={modeColor} bg={modeBg}>
+              <div className="relative">
+                <ChatBubbleLeftEllipsisIcon className="w-[22px] h-[22px]" style={iconStyle('/messages')} />
+                {sinMensajes > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
+                    style={{ width: 16, height: 16, fontSize: 9, background: '#ef4444' }}>
+                    {sinMensajes > 9 ? '9+' : sinMensajes}
+                  </span>
+                )}
+              </div>
+            </NavLink>
+          )}
 
           {/* Alertas */}
           <NavLink to="/notificaciones" label="Alertas" active={isActive('/notificaciones')} color={modeColor} bg={modeBg}>
             <div className="relative">
-              <BellIcon
-                className={iconClass('/notificaciones')}
-                style={isActive('/notificaciones') ? { color: modeColor } : {}}
-              />
+              <BellIcon className="w-[22px] h-[22px]" style={iconStyle('/notificaciones')} />
               {sinLeer > 0 && (
-                <span
-                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
-                  style={{ width: 16, height: 16, fontSize: 9, background: '#ef4444', boxShadow: '0 2px 6px rgba(239,68,68,0.5)' }}
-                >
+                <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
+                  style={{ width: 16, height: 16, fontSize: 9, background: '#ef4444' }}>
                   {sinLeer > 9 ? '9+' : sinLeer}
                 </span>
               )}
@@ -205,37 +178,27 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
 
         </div>
 
-        {/* Línea de color modo */}
-        <div
-          style={{
-            height: 3,
-            background: isSocialMode
-              ? 'linear-gradient(90deg, #7c3aed, #9333ea, #c084fc)'
-              : 'linear-gradient(90deg, #1d4ed8, #2563eb, #60a5fa)',
-            transition: 'background 0.4s ease',
-          }}
-        />
+        {/* Línea modo */}
+        <div style={{
+          height: 3,
+          background: isSocialMode
+            ? 'linear-gradient(90deg, #7c3aed, #9333ea, #c084fc)'
+            : 'linear-gradient(90deg, #1d4ed8, #2563eb, #60a5fa)',
+          transition: 'background 0.4s ease',
+        }} />
       </nav>
     </>
   );
 }
 
-function NavLink({
-  to, label, active, color, bg, children,
-}: {
+function NavLink({ to, label, active, color, bg, children }: {
   to: string; label: string; active: boolean; color: string; bg: string; children: React.ReactNode;
 }) {
   return (
     <Link
       to={to}
       className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
-      style={active ? {
-        background: bg,
-        borderRadius: 12,
-        padding: '4px 8px',
-        marginTop: -4,
-        marginBottom: -4,
-      } : { padding: '4px 8px' }}
+      style={active ? { background: bg, borderRadius: 12, padding: '4px 8px', marginTop: -4, marginBottom: -4 } : { padding: '4px 8px' }}
     >
       {children}
       <span className="text-[9px] font-semibold" style={{ color: active ? color : '#9ca3af' }}>
@@ -243,4 +206,4 @@ function NavLink({
       </span>
     </Link>
   );
-        }
+              }
