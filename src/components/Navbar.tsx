@@ -14,12 +14,18 @@ interface NavbarProps {
   onPublishClick?: () => void;
 }
 
+const RUTAS_SOCIAL = ['/social', '/reels', '/search'];
+
 export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
-  const { isSocialMode, user } = useTheme();
+  const { user } = useTheme();
   const navigate  = useNavigate();
   const location  = useLocation();
   const [sinLeer,     setSinLeer]     = useState(0);
   const [sinMensajes, setSinMensajes] = useState(0);
+
+  const isSocial = RUTAS_SOCIAL.some((r) => location.pathname.startsWith(r));
+  const modeColor = isSocial ? '#9333ea' : '#2563eb';
+  const modeBg    = isSocial ? 'rgba(147,51,234,0.12)' : 'rgba(37,99,235,0.12)';
 
   useEffect(() => {
     if (!user) return;
@@ -41,8 +47,6 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
   }, [user]);
 
   const isActive = (path: string) => location.pathname === path;
-  const modeColor = isSocialMode ? '#9333ea' : '#2563eb';
-  const modeBg    = isSocialMode ? 'rgba(147,51,234,0.12)' : 'rgba(37,99,235,0.12)';
 
   const iconStyle = (path: string) => ({
     color: isActive(path) ? modeColor : '#9ca3af',
@@ -52,7 +56,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
     <nav
       className="fixed bottom-0 left-0 right-0 w-full bg-white/96 dark:bg-gray-900/96 backdrop-blur-xl z-[100]"
       style={{
-        borderTop: `2px solid ${isSocialMode ? 'rgba(147,51,234,0.2)' : 'rgba(37,99,235,0.2)'}`,
+        borderTop: `2px solid ${isSocial ? 'rgba(147,51,234,0.2)' : 'rgba(37,99,235,0.2)'}`,
         boxShadow: '0 -4px 24px rgba(0,0,0,0.08)',
         transition: 'border-color 0.3s ease',
       }}
@@ -68,8 +72,8 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           <span className="text-[9px] text-gray-400">menú</span>
         </button>
 
-        {/* 2do ícono */}
-        {isSocialMode ? (
+        {/* Inicio / Buscar */}
+        {isSocial ? (
           <NavLink to="/search" label="Buscar" active={isActive('/search')} color={modeColor} bg={modeBg}>
             <MagnifyingGlassIcon className="w-[22px] h-[22px]" style={iconStyle('/search')} />
           </NavLink>
@@ -82,13 +86,13 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
         {/* Botón central */}
         <div className="flex flex-col items-center" style={{ marginTop: '-22px' }}>
           <button
-            onClick={isSocialMode ? onPublishClick : () => navigate('/jobs')}
+            onClick={isSocial ? onPublishClick : () => navigate('/jobs')}
             style={{
               width: 52, height: 52, borderRadius: '50%',
-              background: isSocialMode
+              background: isSocial
                 ? 'linear-gradient(135deg, #7c3aed, #9333ea)'
                 : 'linear-gradient(135deg, #1d4ed8, #2563eb)',
-              boxShadow: isSocialMode
+              boxShadow: isSocial
                 ? '0 6px 20px rgba(147,51,234,0.45)'
                 : '0 6px 20px rgba(37,99,235,0.45)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -100,12 +104,12 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
             <PlusIcon className="w-6 h-6 text-white" strokeWidth={2.8} />
           </button>
           <span className="text-[9px] text-gray-400 mt-1">
-            {isSocialMode ? 'Publicar' : 'Empleos'}
+            {isSocial ? 'Publicar' : 'Empleos'}
           </span>
         </div>
 
         {/* Reels (Social) / Mensajes (Empleo) */}
-        {isSocialMode ? (
+        {isSocial ? (
           <NavLink to="/reels" label="Reels" active={isActive('/reels')} color={modeColor} bg={modeBg}>
             <FilmIcon className="w-[22px] h-[22px]" style={iconStyle('/reels')} />
           </NavLink>
@@ -138,10 +142,9 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
 
       </div>
 
-      {/* Línea modo */}
       <div style={{
         height: 3,
-        background: isSocialMode
+        background: isSocial
           ? 'linear-gradient(90deg, #7c3aed, #9333ea, #c084fc)'
           : 'linear-gradient(90deg, #1d4ed8, #2563eb, #60a5fa)',
         transition: 'background 0.4s ease',
