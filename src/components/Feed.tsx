@@ -1,11 +1,9 @@
-// src/components/Feed.tsx
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { db, auth, storage } from '../app/firebase';
+import { db, auth } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
   doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc, limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData, where, getCountFromServer,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 import {
   PhotoIcon, PaperAirplaneIcon, ExclamationCircleIcon,
@@ -13,6 +11,7 @@ import {
   HeartIcon as HeartOutline, TrashIcon, FlagIcon, PencilIcon, CheckIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
+import { subirArchivoCloudinary } from '../utils/cloudinary';
 
 interface Post {
   id:        string;
@@ -272,7 +271,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const [editandoId,     setEditandoId]     = useState<string | null>(null);
   const [editTexto,      setEditTexto]      = useState('');
   const [guardandoEdit,  setGuardandoEdit]  = useState(false);
-
   const [soloSeguidos,   setSoloSeguidos]   = useState(false);
   const [siguiendoUids,  setSiguiendoUids]  = useState<string[]>([]);
 
@@ -366,12 +364,11 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     try {
       let mediaUrl  = '';
       let mediaType: 'image' | 'video' | '' = '';
-      if (file && storage) {
+      if (file) {
         try {
-          const sRef = storageRef(storage, `posts/${Date.now()}_${file.name}`);
-          await uploadBytes(sRef, file);
-          mediaUrl  = await getDownloadURL(sRef);
-          mediaType = file.type.startsWith('video') ? 'video' : 'image';
+          const { url, tipo } = await subirArchivoCloudinary(file);
+          mediaUrl  = url;
+          mediaType = tipo;
         } catch {
           setError('No se pudo subir el archivo. Se publicará sin imagen.');
         }
@@ -394,13 +391,6 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     if (!user || user.uid !== post.userId) return;
     try {
       await deleteDoc(doc(db, 'posts', post.id));
-      if (post.mediaUrl) {
-        try {
-          const url  = new URL(post.mediaUrl);
-          const path = decodeURIComponent(url.pathname.split('/o/')[1].split('?')[0]);
-          await deleteObject(storageRef(storage, path));
-        } catch { /* non-critical */ }
-      }
     } catch (e) { console.error('[Feed] eliminar:', e); }
   };
 
@@ -454,49 +444,28 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     }
   };
 
-  // Auto-eliminación: si llega a REPORTES_LIMITE reportes se elimina solo
   const handleReportar = async (postId: string) => {
     if (!user) return;
     setReportandoId(null);
     try {
-      // Verificar que el usuario no haya reportado ya este post
       const qYaReporto = query(
         collection(db, 'reports'),
         where('postId', '==', postId),
         where('reportadoPor', '==', user.uid),
       );
       const yaReporto = await getDocs(qYaReporto);
-      if (!yaReporto.empty) return; // Ya reportó, no duplicar
+      if (!yaReporto.empty) return;
 
-      // Agregar el reporte
       await addDoc(collection(db, 'reports'), {
-        postId,
-        reportadoPor: user.uid,
-        creadoEn:     serverTimestamp(),
-        revisado:     false,
+        postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
       });
 
-      // Contar total de reportes para este post
-      const qReportes = query(
-        collection(db, 'reports'),
-        where('postId', '==', postId),
-      );
-      const snapReportes = await getCountFromServer(qReportes);
-      const totalReportes = snapReportes.data().count;
+      const qReportes  = query(collection(db, 'reports'), where('postId', '==', postId));
+      const snapConteo = await getCountFromServer(qReportes);
 
-      // Si llega al límite, eliminar el post automáticamente
-      if (totalReportes >= REPORTES_LIMITE) {
+      if (snapConteo.data().count >= REPORTES_LIMITE) {
         const postSnap = await getDoc(doc(db, 'posts', postId));
         if (postSnap.exists()) {
-          const postData = postSnap.data();
-          // Eliminar media de Storage si existe
-          if (postData.mediaUrl) {
-            try {
-              const url  = new URL(postData.mediaUrl);
-              const path = decodeURIComponent(url.pathname.split('/o/')[1].split('?')[0]);
-              await deleteObject(storageRef(storage, path));
-            } catch { /* non-critical */ }
-          }
           await deleteDoc(doc(db, 'posts', postId));
         }
       }
@@ -764,4 +733,4 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-                                                                               }
+    }
