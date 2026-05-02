@@ -22,6 +22,7 @@ interface Post {
   userName:  string;
   userPhoto: string;
   reactions: Record<string, string>;
+  zona:      string;
   createdAt: { toDate: () => Date } | null;
 }
 
@@ -38,15 +39,17 @@ interface Comment {
 
 interface FeedProps {
   showCompose?: boolean;
+  soloCompose?: boolean;
+  zona?:        'social' | 'empleo';
   onPublished?: () => void;
 }
 
-const MAX_FILE_SIZE_MB   = 50;
-const MAX_TEXT_LENGTH    = 500;
-const ALLOWED_TYPES      = ['image/', 'video/'];
-const REACCIONES         = ['❤️', '😂', '😍', '👍', '😲'];
-const PAGE_SIZE          = 10;
-const REPORTES_LIMITE    = 5;
+const MAX_FILE_SIZE_MB = 50;
+const MAX_TEXT_LENGTH  = 500;
+const ALLOWED_TYPES    = ['image/', 'video/'];
+const REACCIONES       = ['❤️', '😂', '😍', '👍', '😲'];
+const PAGE_SIZE        = 10;
+const REPORTES_LIMITE  = 5;
 
 function sanitizeText(input: string): string {
   return input.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
@@ -250,7 +253,7 @@ function ModalComentarios({ postId, postUserId, onClose }: {
   );
 }
 
-export default function Feed({ showCompose = true, onPublished }: FeedProps) {
+export default function Feed({ showCompose = true, soloCompose = false, zona = 'social', onPublished }: FeedProps) {
   const user     = auth.currentUser;
   const navigate = useNavigate();
 
@@ -294,6 +297,7 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   }, []);
 
   useEffect(() => {
+    if (soloCompose) return;
     setPosts([]);
     setLastDoc(null);
     setHayMas(true);
@@ -303,11 +307,17 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     const q = soloSeguidos
       ? query(
           collection(db, 'posts'),
+          where('zona', '==', zona),
           where('userId', 'in', siguiendoUids.slice(0, 10)),
           orderBy('createdAt', 'desc'),
           limit(PAGE_SIZE),
         )
-      : query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
+      : query(
+          collection(db, 'posts'),
+          where('zona', '==', zona),
+          orderBy('createdAt', 'desc'),
+          limit(PAGE_SIZE),
+        );
 
     const unsub = onSnapshot(q,
       (snap) => {
@@ -318,7 +328,7 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       (err) => { console.error('[Feed]', err); setError('No se pudieron cargar las publicaciones.'); }
     );
     return () => unsub();
-  }, [soloSeguidos, siguiendoUids]);
+  }, [soloSeguidos, siguiendoUids, zona, soloCompose]);
 
   const cargarMas = useCallback(async () => {
     if (!lastDoc || cargandoMas || !hayMas) return;
@@ -327,12 +337,19 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       const q = soloSeguidos
         ? query(
             collection(db, 'posts'),
+            where('zona', '==', zona),
             where('userId', 'in', siguiendoUids.slice(0, 10)),
             orderBy('createdAt', 'desc'),
             startAfter(lastDoc),
             limit(PAGE_SIZE),
           )
-        : query(collection(db, 'posts'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE));
+        : query(
+            collection(db, 'posts'),
+            where('zona', '==', zona),
+            orderBy('createdAt', 'desc'),
+            startAfter(lastDoc),
+            limit(PAGE_SIZE),
+          );
       const snap   = await getDocs(q);
       const nuevos = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
       setPosts((prev) => [...prev, ...nuevos]);
@@ -340,7 +357,7 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       setHayMas(snap.docs.length === PAGE_SIZE);
     } catch (e) { console.error('[Feed] cargarMas:', e); }
     finally { setCargandoMas(false); }
-  }, [lastDoc, cargandoMas, hayMas, soloSeguidos, siguiendoUids]);
+  }, [lastDoc, cargandoMas, hayMas, soloSeguidos, siguiendoUids, zona]);
 
   useEffect(() => { return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); }; }, []);
 
@@ -374,7 +391,7 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         }
       }
       await addDoc(collection(db, 'posts'), {
-        text: textSanitizado, mediaUrl, mediaType,
+        text: textSanitizado, mediaUrl, mediaType, zona,
         userId: user.uid, userName: user.displayName ?? 'Usuario',
         userPhoto: user.photoURL ?? '', reactions: {}, createdAt: serverTimestamp(),
       });
@@ -404,11 +421,9 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
     setGuardandoEdit(true);
     try {
       await updateDoc(doc(db, 'posts', postId), {
-        text: sanitizeText(editTexto),
-        editadoEn: serverTimestamp(),
+        text: sanitizeText(editTexto), editadoEn: serverTimestamp(),
       });
-      setEditandoId(null);
-      setEditTexto('');
+      setEditandoId(null); setEditTexto('');
     } catch (e) { console.error('[Feed] editar:', e); }
     finally { setGuardandoEdit(false); }
   };
@@ -462,12 +477,9 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
 
       const qReportes  = query(collection(db, 'reports'), where('postId', '==', postId));
       const snapConteo = await getCountFromServer(qReportes);
-
       if (snapConteo.data().count >= REPORTES_LIMITE) {
         const postSnap = await getDoc(doc(db, 'posts', postId));
-        if (postSnap.exists()) {
-          await deleteDoc(doc(db, 'posts', postId));
-        }
+        if (postSnap.exists()) await deleteDoc(doc(db, 'posts', postId));
       }
     } catch (e) { console.error('[Feed] reportar:', e); }
   };
@@ -477,6 +489,67 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
   const postsFiltrados = soloSeguidos && siguiendoUids.length > 10
     ? posts.filter((p) => siguiendoUids.includes(p.userId))
     : posts;
+
+  // Solo compose — sin feed
+  if (soloCompose) {
+    return (
+      <div className="space-y-3">
+        {showCompose && user && (
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3">
+            <div className="flex gap-3 items-center">
+              <img
+                src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
+                alt={user.displayName || 'usuario'}
+                className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-200 dark:ring-purple-800"
+              />
+              <span className="font-bold text-gray-800 dark:text-gray-100 text-sm">{user.displayName}</span>
+            </div>
+            <textarea
+              value={text}
+              onChange={(e) => { if (e.target.value.length <= MAX_TEXT_LENGTH) setText(e.target.value); }}
+              placeholder="¿Qué querés compartir?"
+              className="w-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 rounded-2xl p-3 text-sm resize-none focus:outline-none focus:border-purple-400 h-24"
+              maxLength={MAX_TEXT_LENGTH}
+            />
+            <div className="flex justify-end">
+              <span className={`text-xs ${text.length >= MAX_TEXT_LENGTH ? 'text-red-400' : 'text-gray-300 dark:text-gray-600'}`}>
+                {text.length}/{MAX_TEXT_LENGTH}
+              </span>
+            </div>
+            {preview && (
+              <div className="relative">
+                <img src={preview} alt="Vista previa" className="rounded-2xl w-full object-cover max-h-48" />
+                <button
+                  onClick={() => { setFile(null); setPreview(null); if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; } }}
+                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
+                >✕</button>
+              </div>
+            )}
+            {error && (
+              <div className="flex items-center gap-2 text-red-500 text-xs" role="alert">
+                <ExclamationCircleIcon className="w-4 h-4 shrink-0" />{error}
+              </div>
+            )}
+            <div className="flex justify-between items-center pt-1 border-t border-gray-100 dark:border-gray-800">
+              <label className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
+                <PhotoIcon className="w-5 h-5 text-purple-400" />
+                <span>Foto/Video</span>
+                <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
+              </label>
+              <button
+                onClick={handlePost}
+                disabled={publicando || (!text.trim() && !file)}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-2xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-all"
+              >
+                <PaperAirplaneIcon className="w-4 h-4" />
+                {publicando ? 'Publicando...' : 'Publicar'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -492,78 +565,16 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
         <button
           onClick={() => setSoloSeguidos(false)}
           className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
-            !soloSeguidos
-              ? 'bg-purple-600 text-white shadow-sm'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+            !soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
           }`}
-        >
-          Todos
-        </button>
+        >Todos</button>
         <button
           onClick={() => setSoloSeguidos(true)}
           className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
-            soloSeguidos
-              ? 'bg-purple-600 text-white shadow-sm'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+            soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
           }`}
-        >
-          Siguiendo
-        </button>
+        >Siguiendo</button>
       </div>
-
-      {showCompose && user && (
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3">
-          <div className="flex gap-3 items-center">
-            <img
-              src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
-              alt={user.displayName || 'usuario'}
-              className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-200 dark:ring-purple-800"
-            />
-            <span className="font-bold text-gray-800 dark:text-gray-100 text-sm">{user.displayName}</span>
-          </div>
-          <textarea
-            value={text}
-            onChange={(e) => { if (e.target.value.length <= MAX_TEXT_LENGTH) setText(e.target.value); }}
-            placeholder="¿Qué querés compartir?"
-            className="w-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 rounded-2xl p-3 text-sm resize-none focus:outline-none focus:border-purple-400 h-24"
-            maxLength={MAX_TEXT_LENGTH}
-          />
-          <div className="flex justify-end">
-            <span className={`text-xs ${text.length >= MAX_TEXT_LENGTH ? 'text-red-400' : 'text-gray-300 dark:text-gray-600'}`}>
-              {text.length}/{MAX_TEXT_LENGTH}
-            </span>
-          </div>
-          {preview && (
-            <div className="relative">
-              <img src={preview} alt="Vista previa" className="rounded-2xl w-full object-cover max-h-48" />
-              <button
-                onClick={() => { setFile(null); setPreview(null); if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; } }}
-                className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
-              >✕</button>
-            </div>
-          )}
-          {error && (
-            <div className="flex items-center gap-2 text-red-500 text-xs" role="alert">
-              <ExclamationCircleIcon className="w-4 h-4 shrink-0" />{error}
-            </div>
-          )}
-          <div className="flex justify-between items-center pt-1 border-t border-gray-100 dark:border-gray-800">
-            <label className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
-              <PhotoIcon className="w-5 h-5 text-purple-400" />
-              <span>Foto/Video</span>
-              <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
-            </label>
-            <button
-              onClick={handlePost}
-              disabled={publicando || (!text.trim() && !file)}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-2xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-all"
-            >
-              <PaperAirplaneIcon className="w-4 h-4" />
-              {publicando ? 'Publicando...' : 'Publicar'}
-            </button>
-          </div>
-        </div>
-      )}
 
       {postsFiltrados.map((p) => {
         const miReaccion     = p.reactions?.[user?.uid ?? ''];
@@ -588,25 +599,16 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
                   <button
                     onClick={() => { vibrar(); setReportandoId(reportandoId === p.id ? null : p.id); }}
                     className="p-2 rounded-full bg-gray-50 dark:bg-gray-800 active:scale-90 transition-transform"
-                    aria-label="Reportar"
                   >
                     <FlagIcon className="w-4 h-4 text-gray-400" />
                   </button>
                 )}
                 {esMio && (
                   <>
-                    <button
-                      onClick={() => handleEditarInicio(p)}
-                      className="p-2 rounded-full bg-blue-50 dark:bg-blue-900/20 active:scale-90 transition-transform"
-                      aria-label="Editar publicación"
-                    >
+                    <button onClick={() => handleEditarInicio(p)} className="p-2 rounded-full bg-blue-50 dark:bg-blue-900/20 active:scale-90 transition-transform">
                       <PencilIcon className="w-4 h-4 text-blue-500" />
                     </button>
-                    <button
-                      onClick={() => handleEliminar(p)}
-                      className="p-2 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform"
-                      aria-label="Eliminar publicación"
-                    >
+                    <button onClick={() => handleEliminar(p)} className="p-2 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform">
                       <TrashIcon className="w-4 h-4 text-red-500" />
                     </button>
                   </>
@@ -633,17 +635,12 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
                   maxLength={MAX_TEXT_LENGTH}
                 />
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => { setEditandoId(null); setEditTexto(''); }}
-                    className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold active:scale-95"
-                  >
+                  <button onClick={() => { setEditandoId(null); setEditTexto(''); }}
+                    className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold active:scale-95">
                     Cancelar
                   </button>
-                  <button
-                    onClick={() => handleEditarGuardar(p.id)}
-                    disabled={guardandoEdit || !editTexto.trim()}
-                    className="flex-1 py-2 rounded-xl bg-blue-500 text-white text-sm font-bold flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
-                  >
+                  <button onClick={() => handleEditarGuardar(p.id)} disabled={guardandoEdit || !editTexto.trim()}
+                    className="flex-1 py-2 rounded-xl bg-blue-500 text-white text-sm font-bold flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50">
                     <CheckIcon className="w-4 h-4" />
                     {guardandoEdit ? 'Guardando...' : 'Guardar'}
                   </button>
@@ -663,10 +660,8 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
 
             <div className="px-4 py-3 flex items-center gap-5 border-t border-gray-100 dark:border-gray-800">
               <div className="relative">
-                <button
-                  onClick={() => { vibrar(); setReaccionandoId(reaccionandoId === p.id ? null : p.id); }}
-                  className="flex items-center gap-1.5 active:scale-90 transition-transform"
-                >
+                <button onClick={() => { vibrar(); setReaccionandoId(reaccionandoId === p.id ? null : p.id); }}
+                  className="flex items-center gap-1.5 active:scale-90 transition-transform">
                   <span className="text-2xl leading-none">{miReaccion || '🤍'}</span>
                   <span className={`text-sm font-bold ${miReaccion ? 'text-purple-500' : 'text-gray-400 dark:text-gray-500'}`}>
                     {Object.keys(p.reactions || {}).length || 0}
@@ -676,17 +671,13 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
                   <SelectorReaccion onSelect={(emoji) => handleReaccion(p.id, p.userId, emoji)} />
                 )}
               </div>
-              <button
-                onClick={() => { setComentandoId(p.id); setComentandoUid(p.userId); }}
-                className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500 active:scale-90 transition-transform"
-              >
+              <button onClick={() => { setComentandoId(p.id); setComentandoUid(p.userId); }}
+                className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500 active:scale-90 transition-transform">
                 <ChatBubbleOvalLeftIcon className="w-6 h-6" />
                 <ComentariosCount postId={p.id} />
               </button>
-              <button
-                onClick={() => handleCompartir(p)}
-                className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500 active:scale-90 transition-transform ml-auto"
-              >
+              <button onClick={() => handleCompartir(p)}
+                className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500 active:scale-90 transition-transform ml-auto">
                 <ShareIcon className="w-5 h-5" />
               </button>
             </div>
@@ -695,11 +686,8 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       })}
 
       {hayMas && postsFiltrados.length > 0 && (
-        <button
-          onClick={cargarMas}
-          disabled={cargandoMas}
-          className="w-full py-3 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold active:scale-95 transition-all disabled:opacity-50"
-        >
+        <button onClick={cargarMas} disabled={cargandoMas}
+          className="w-full py-3 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold active:scale-95 transition-all disabled:opacity-50">
           {cargandoMas ? (
             <span className="flex items-center justify-center gap-2">
               <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
@@ -733,4 +721,4 @@ export default function Feed({ showCompose = true, onPublished }: FeedProps) {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-    }
+  }
