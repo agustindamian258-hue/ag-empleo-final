@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import FloatingAI from '../components/FloatingAI';
 
 export default function Home() {
-  const [isMenuOpen,    setIsMenuOpen]    = useState<boolean>(false);
-  const [isPublishOpen, setIsPublishOpen] = useState<boolean>(false);
-  const { user } = useTheme();
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const { user, toggleMode } = useTheme();
+  const navigate = useNavigate();
   const nombre = user?.displayName?.split(' ')[0] || 'Bienvenido';
+
+  const handleSwitch = () => {
+    toggleMode();
+    navigate('/social');
+  };
 
   return (
     <div className="relative min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -21,12 +27,19 @@ export default function Home() {
             Hola {nombre}, encontrá tu próximo trabajo
           </p>
         </div>
-        <span className="text-[10px] font-black px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
-          💼 Empleo
-        </span>
+        <button
+          onClick={handleSwitch}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all"
+          style={{
+            background: 'linear-gradient(135deg, #1d4ed8, #2563eb)',
+            boxShadow: '0 3px 12px rgba(37,99,235,0.4)',
+          }}
+        >
+          <span className="text-[11px]">🌐</span>
+          <span className="text-[10px] font-black text-white">Ir a Social</span>
+        </button>
       </header>
 
-      {/* Zona Empleo — sin feed social */}
       <main className="px-4 pt-6 space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <a href="/jobs" className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-4 flex flex-col gap-2 shadow-sm active:scale-95 transition-transform">
@@ -53,10 +66,7 @@ export default function Home() {
       </main>
 
       <FloatingAI />
-      <Navbar
-        onMenuClick={() => setIsMenuOpen(true)}
-        onPublishClick={() => setIsPublishOpen(true)}
-      />
+      <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
