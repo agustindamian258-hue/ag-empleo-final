@@ -4,6 +4,7 @@ import { User, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../app/firebase';
+import { useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import { useTheme, SocialColor } from '../context/ThemeContext';
@@ -13,10 +14,14 @@ import {
 } from '@heroicons/react/24/outline';
 
 interface UserForm {
-  name: string; title: string; bio: string; ciudad: string;
-  // Empleo
-  cargoDeseado: string; nivelExperiencia: string;
-  disponible: boolean; salarioEsperado: string;
+  name:             string;
+  title:            string;
+  bio:              string;
+  ciudad:           string;
+  cargoDeseado:     string;
+  nivelExperiencia: string;
+  disponible:       boolean;
+  salarioEsperado:  string;
 }
 
 interface Post {
@@ -31,7 +36,12 @@ type TabId     = 'social' | 'empleo';
 const MAX_BIO      = 300;
 const MAX_PHOTO_MB = 5;
 
-const NIVELES = ['Sin experiencia', 'Junior (0-2 años)', 'Semi-Senior (2-5 años)', 'Senior (5+ años)'];
+const NIVELES = [
+  'Sin experiencia',
+  'Junior (0-2 años)',
+  'Semi-Senior (2-5 años)',
+  'Senior (5+ años)',
+];
 
 const COLORS: { id: SocialColor; bg: string; ring: string }[] = [
   { id: 'blue',   bg: 'bg-blue-500',   ring: 'ring-blue-500'   },
@@ -44,6 +54,12 @@ const COLORS: { id: SocialColor; bg: string; ring: string }[] = [
 
 export default function Profile() {
   const { socialColor, setSocialColor } = useTheme();
+  const location = useLocation();
+
+  // Lee la zona enviada desde Menu.tsx via navigate(path, { state: { zona } })
+  // Si no hay state (acceso directo a /profile), default 'empleo'
+  const zonaInicial: TabId =
+    (location.state as { zona?: TabId } | null)?.zona ?? 'empleo';
 
   const [user,         setUser]         = useState<User | null>(null);
   const [form,         setForm]         = useState<UserForm>({
@@ -60,16 +76,22 @@ export default function Profile() {
   const [totalLikes,   setTotalLikes]   = useState(0);
   const [seguidores,   setSeguidores]   = useState(0);
   const [siguiendo,    setSiguiendo]    = useState(0);
-  const [tabActiva,    setTabActiva]    = useState<TabId>('social');
+  const [tabActiva,    setTabActiva]    = useState<TabId>(zonaInicial);
+
+  // Si el usuario navega al perfil desde otra zona sin recargar, sincroniza el tab
+  useEffect(() => {
+    const zona = (location.state as { zona?: TabId } | null)?.zona;
+    if (zona) setTabActiva(zona);
+  }, [location.state]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (u) {
-        setFotoURL(u.photoURL || '');
         loadProfile(u.uid);
         loadMisPosts(u.uid);
         loadFollowStats(u.uid);
+        setFotoURL(u.photoURL || '');
       }
     });
     return () => unsub();
@@ -116,7 +138,8 @@ export default function Profile() {
     if (!f || !user) return;
     if (!f.type.startsWith('image/')) return;
     if (f.size > MAX_PHOTO_MB * 1024 * 1024) {
-      setStatus({ tipo: 'error', texto: `La foto no puede superar ${MAX_PHOTO_MB}MB.` }); return;
+      setStatus({ tipo: 'error', texto: `La foto no puede superar ${MAX_PHOTO_MB}MB.` });
+      return;
     }
     setSubiendoFoto(true);
     try {
@@ -133,7 +156,10 @@ export default function Profile() {
 
   const saveProfile = async () => {
     if (!user) return;
-    if (!form.name.trim()) { setStatus({ tipo: 'error', texto: 'El nombre es obligatorio.' }); return; }
+    if (!form.name.trim()) {
+      setStatus({ tipo: 'error', texto: 'El nombre es obligatorio.' });
+      return;
+    }
     setGuardando(true); setStatus(null);
     try {
       await updateDoc(doc(db, 'users', user.uid), {
@@ -155,9 +181,16 @@ export default function Profile() {
   };
 
   const avatarUrl = fotoURL ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=3b82f6&color=fff&size=128`;
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=${
+      tabActiva === 'social' ? '7c3aed' : '3b82f6'
+    }&color=fff&size=128`;
 
   const inputCls = 'w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300]';
+
+  // Colores del header de perfil según zona activa
+  const headerGradient = tabActiva === 'social'
+    ? 'from-purple-600 to-purple-800'
+    : 'from-blue-600 to-blue-800';
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -166,10 +199,24 @@ export default function Profile() {
 
       <div className="max-w-lg mx-auto px-4 pt-6 space-y-4">
 
+        {/* Banner de zona activa */}
+        <div className={`bg-gradient-to-r ${headerGradient} rounded-3xl p-4 text-white text-center`}>
+          <p className="text-xs font-black uppercase tracking-widest opacity-75 mb-0.5">
+            Perfil activo
+          </p>
+          <p className="text-lg font-black">
+            {tabActiva === 'social' ? '🌐 Zona Social' : '💼 Zona Empleo'}
+          </p>
+        </div>
+
         {/* Avatar */}
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <img src={avatarUrl} alt="foto" className="w-24 h-24 rounded-full border-4 border-[--sc-100] object-cover shadow-md" />
+            <img
+              src={avatarUrl}
+              alt="foto de perfil"
+              className="w-24 h-24 rounded-full border-4 border-[--sc-100] object-cover shadow-md"
+            />
             <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--sc-600)] flex items-center justify-center cursor-pointer ring-2 ring-white dark:ring-gray-950 active:scale-90 transition-transform">
               {subiendoFoto
                 ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -188,7 +235,9 @@ export default function Profile() {
           <div className="flex gap-6">
             <div className="flex flex-col items-center">
               <span className="font-black text-lg text-gray-900 dark:text-white">{misPosts.length}</span>
-              <span className="text-xs text-gray-400 flex items-center gap-1"><DocumentTextIcon className="w-3.5 h-3.5" /> Posts</span>
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <DocumentTextIcon className="w-3.5 h-3.5" /> Posts
+              </span>
             </div>
             <div className="w-px bg-gray-200 dark:bg-gray-700" />
             <div className="flex flex-col items-center">
@@ -203,7 +252,9 @@ export default function Profile() {
             <div className="w-px bg-gray-200 dark:bg-gray-700" />
             <div className="flex flex-col items-center">
               <span className="font-black text-lg text-gray-900 dark:text-white">{totalLikes}</span>
-              <span className="text-xs text-gray-400 flex items-center gap-1"><HeartIcon className="w-3.5 h-3.5" /> Likes</span>
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <HeartIcon className="w-3.5 h-3.5" /> Likes
+              </span>
             </div>
           </div>
         </div>
@@ -225,7 +276,7 @@ export default function Profile() {
           ))}
         </div>
 
-        {/* Tab Social */}
+        {/* ── Tab Social ──────────────────────────────────────────────────── */}
         {tabActiva === 'social' && (
           <>
             {/* Color */}
@@ -233,8 +284,12 @@ export default function Profile() {
               <h2 className="font-black text-gray-800 dark:text-white text-base mb-3">Color zona Social</h2>
               <div className="flex gap-3 justify-center">
                 {COLORS.map(({ id, bg, ring }) => (
-                  <button key={id} onClick={() => setSocialColor(id)}
-                    className={`w-9 h-9 rounded-full ${bg} transition-transform active:scale-90 ${socialColor === id ? `ring-2 ring-offset-2 ${ring}` : ''}`}
+                  <button
+                    key={id}
+                    onClick={() => setSocialColor(id)}
+                    className={`w-9 h-9 rounded-full ${bg} transition-transform active:scale-90 ${
+                      socialColor === id ? `ring-2 ring-offset-2 ${ring}` : ''
+                    }`}
                     aria-label={id}
                   />
                 ))}
@@ -243,16 +298,23 @@ export default function Profile() {
 
             {/* Formulario social */}
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
-              <h2 className="font-black text-gray-800 dark:text-white text-base">Editar perfil</h2>
+              <h2 className="font-black text-gray-800 dark:text-white text-base">Editar perfil social</h2>
               {([
                 { label: 'Nombre completo',    field: 'name'   as const, placeholder: 'Ej: Juan Pérez'        },
                 { label: 'Título profesional', field: 'title'  as const, placeholder: 'Ej: Desarrollador Web' },
                 { label: 'Ciudad',             field: 'ciudad' as const, placeholder: 'Ej: Buenos Aires'      },
               ]).map(({ label, field, placeholder }) => (
                 <div key={field} className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</label>
-                  <input type="text" placeholder={placeholder} value={form[field] as string}
-                    onChange={(e) => setForm({ ...form, [field]: e.target.value })} className={inputCls} />
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {label}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={placeholder}
+                    value={form[field] as string}
+                    onChange={(e) => setForm({ ...form, [field]: e.target.value })}
+                    className={inputCls}
+                  />
                 </div>
               ))}
               <div className="space-y-1">
@@ -262,33 +324,47 @@ export default function Profile() {
                     {form.bio.length}/{MAX_BIO}
                   </span>
                 </label>
-                <textarea value={form.bio}
+                <textarea
+                  value={form.bio}
                   onChange={(e) => { if (e.target.value.length <= MAX_BIO) setForm({ ...form, bio: e.target.value }); }}
-                  rows={4} maxLength={MAX_BIO} placeholder="Contá algo sobre vos..."
-                  className={`${inputCls} resize-none`} />
+                  rows={4}
+                  maxLength={MAX_BIO}
+                  placeholder="Contá algo sobre vos..."
+                  className={`${inputCls} resize-none`}
+                />
               </div>
             </div>
           </>
         )}
 
-        {/* Tab Empleo */}
+        {/* ── Tab Empleo ──────────────────────────────────────────────────── */}
         {tabActiva === 'empleo' && (
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <h2 className="font-black text-gray-800 dark:text-white text-base">Perfil de empleo</h2>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cargo deseado</label>
-              <input type="text" placeholder="Ej: Operario, Vendedor, Programador"
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Cargo deseado
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: Operario, Vendedor, Programador"
                 value={form.cargoDeseado}
                 onChange={(e) => setForm({ ...form, cargoDeseado: e.target.value })}
-                className={inputCls} maxLength={80} />
+                className={inputCls}
+                maxLength={80}
+              />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Nivel de experiencia</label>
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Nivel de experiencia
+              </label>
               <div className="flex flex-col gap-2">
                 {NIVELES.map((n) => (
-                  <button key={n} type="button"
+                  <button
+                    key={n}
+                    type="button"
                     onClick={() => setForm({ ...form, nivelExperiencia: n })}
                     className={`text-left px-4 py-3 rounded-2xl text-sm font-bold border transition-all active:scale-95 ${
                       form.nivelExperiencia === n
@@ -303,11 +379,17 @@ export default function Profile() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expectativa salarial (opcional)</label>
-              <input type="text" placeholder="Ej: $500.000 - Negociable"
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Expectativa salarial (opcional)
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: $500.000 - Negociable"
                 value={form.salarioEsperado}
                 onChange={(e) => setForm({ ...form, salarioEsperado: e.target.value })}
-                className={inputCls} maxLength={60} />
+                className={inputCls}
+                maxLength={60}
+              />
             </div>
 
             {/* Disponible para trabajar */}
@@ -318,9 +400,13 @@ export default function Profile() {
               </div>
               <button
                 onClick={() => setForm({ ...form, disponible: !form.disponible })}
-                className={`relative w-12 h-6 rounded-full transition-colors ${form.disponible ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  form.disponible ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
               >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.disponible ? 'translate-x-6' : 'translate-x-0'}`} />
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                  form.disponible ? 'translate-x-6' : 'translate-x-0'
+                }`} />
               </button>
             </div>
           </div>
@@ -328,15 +414,26 @@ export default function Profile() {
 
         {/* Status */}
         {status && (
-          <div className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${status.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`} role="alert">
-            {status.tipo === 'exito' ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />}
+          <div
+            className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${
+              status.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+            }`}
+            role="alert"
+          >
+            {status.tipo === 'exito'
+              ? <CheckCircleIcon      className="w-5 h-5 shrink-0" />
+              : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
+            }
             {status.texto}
           </div>
         )}
 
         {/* Guardar */}
-        <button onClick={saveProfile} disabled={guardando}
-          className="w-full bg-[--sc-500] hover:bg-[--sc-600] text-white font-black py-4 rounded-2xl transition-colors disabled:opacity-60">
+        <button
+          onClick={saveProfile}
+          disabled={guardando}
+          className="w-full bg-[--sc-500] hover:bg-[--sc-600] text-white font-black py-4 rounded-2xl transition-colors disabled:opacity-60"
+        >
           {guardando ? 'Guardando...' : 'Guardar perfil'}
         </button>
 
@@ -371,4 +468,4 @@ export default function Profile() {
       </div>
     </div>
   );
-        }
+}
