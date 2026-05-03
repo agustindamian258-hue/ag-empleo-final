@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, auth } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc, limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData, where, getCountFromServer,
+  doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove, deleteDoc,
+  limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData,
+  where, getCountFromServer,
 } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -281,12 +283,16 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'follows'), where('followerId', '==', user.uid));
+    const q = query(
+      collection(db, 'follows'),
+      where('followerId', '==', user.uid),
+      where('zona', '==', zona),
+    );
     const unsub = onSnapshot(q, (snap) => {
       setSiguiendoUids(snap.docs.map((d) => d.data().followingId as string));
     }, console.error);
     return () => unsub();
-  }, [user]);
+  }, [user, zona]);
 
   useEffect(() => {
     const online  = () => setSinConexion(false);
@@ -358,8 +364,10 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
     } catch (e) { console.error('[Feed] cargarMas:', e); }
     finally { setCargandoMas(false); }
   }, [lastDoc, cargandoMas, hayMas, soloSeguidos, siguiendoUids, zona]);
-
-  useEffect(() => { return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); }; }, []);
+  
+  useEffect(() => {
+    return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); };
+  }, []);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
@@ -406,15 +414,11 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
 
   const handleEliminar = async (post: Post) => {
     if (!user || user.uid !== post.userId) return;
-    try {
-      await deleteDoc(doc(db, 'posts', post.id));
-    } catch (e) { console.error('[Feed] eliminar:', e); }
+    try { await deleteDoc(doc(db, 'posts', post.id)); }
+    catch (e) { console.error('[Feed] eliminar:', e); }
   };
 
-  const handleEditarInicio = (post: Post) => {
-    setEditandoId(post.id);
-    setEditTexto(post.text);
-  };
+  const handleEditarInicio = (post: Post) => { setEditandoId(post.id); setEditTexto(post.text); };
 
   const handleEditarGuardar = async (postId: string) => {
     if (!user || !editTexto.trim()) return;
@@ -470,11 +474,9 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
       );
       const yaReporto = await getDocs(qYaReporto);
       if (!yaReporto.empty) return;
-
       await addDoc(collection(db, 'reports'), {
         postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
       });
-
       const qReportes  = query(collection(db, 'reports'), where('postId', '==', postId));
       const snapConteo = await getCountFromServer(qReportes);
       if (snapConteo.data().count >= REPORTES_LIMITE) {
@@ -490,7 +492,6 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
     ? posts.filter((p) => siguiendoUids.includes(p.userId))
     : posts;
 
-  // Solo compose — sin feed
   if (soloCompose) {
     return (
       <div className="space-y-3">
@@ -553,7 +554,6 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
 
   return (
     <div className="space-y-3">
-
       {sinConexion && (
         <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 rounded-2xl text-red-600 dark:text-red-400 text-sm font-bold">
           <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
@@ -585,21 +585,19 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
         return (
           <article key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
             <div className="flex gap-3 items-center p-4 pb-3">
-              <button onClick={() => navigate(`/user/${p.userId}`)} className="active:opacity-70 transition-opacity">
+              <button onClick={() => navigate(`/user/${p.userId}`, { state: { zona } })} className="active:opacity-70 transition-opacity">
                 <img src={p.userPhoto || avatarFallback} alt={p.userName} className="w-11 h-11 rounded-full object-cover ring-2 ring-purple-100 dark:ring-purple-900" />
               </button>
               <div className="flex-1 min-w-0">
-                <button onClick={() => navigate(`/user/${p.userId}`)} className="active:opacity-70 transition-opacity text-left">
+                <button onClick={() => navigate(`/user/${p.userId}`, { state: { zona } })} className="active:opacity-70 transition-opacity text-left">
                   <p className="font-black text-gray-900 dark:text-gray-100 text-sm">{p.userName || 'Usuario'}</p>
                 </button>
                 <p className="text-xs text-gray-400 dark:text-gray-500">{formatFecha(p.createdAt)}</p>
               </div>
               <div className="flex items-center gap-1">
                 {!esMio && (
-                  <button
-                    onClick={() => { vibrar(); setReportandoId(reportandoId === p.id ? null : p.id); }}
-                    className="p-2 rounded-full bg-gray-50 dark:bg-gray-800 active:scale-90 transition-transform"
-                  >
+                  <button onClick={() => { vibrar(); setReportandoId(reportandoId === p.id ? null : p.id); }}
+                    className="p-2 rounded-full bg-gray-50 dark:bg-gray-800 active:scale-90 transition-transform">
                     <FlagIcon className="w-4 h-4 text-gray-400" />
                   </button>
                 )}
@@ -721,4 +719,4 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-  }
+}
