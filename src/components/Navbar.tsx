@@ -23,7 +23,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
   const [sinLeer,     setSinLeer]     = useState(0);
   const [sinMensajes, setSinMensajes] = useState(0);
 
-  const isSocial = RUTAS_SOCIAL.some((r) => location.pathname.startsWith(r));
+  const isSocial  = RUTAS_SOCIAL.some((r) => location.pathname.startsWith(r));
   const modeColor = isSocial ? '#9333ea' : '#2563eb';
   const modeBg    = isSocial ? 'rgba(147,51,234,0.12)' : 'rgba(37,99,235,0.12)';
 
@@ -72,10 +72,10 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           <span className="text-[9px] text-gray-400">menú</span>
         </button>
 
-        {/* Inicio (empleo) / Buscar (social) */}
+        {/* Inicio — siempre visible en ambos modos */}
         {isSocial ? (
-          <NavLink to="/search" label="Buscar" active={isActive('/search')} color={modeColor} bg={modeBg}>
-            <MagnifyingGlassIcon className="w-[22px] h-[22px]" style={iconStyle('/search')} />
+          <NavLink to="/social" label="Inicio" active={isActive('/social')} color={modeColor} bg={modeBg}>
+            <HomeIcon className="w-[22px] h-[22px]" style={iconStyle('/social')} />
           </NavLink>
         ) : (
           <NavLink to="/" label="Inicio" active={isActive('/')} color={modeColor} bg={modeBg}>
@@ -177,4 +177,4 @@ function NavLink({ to, label, active, color, bg, children }: {
       </span>
     </Link>
   );
-        }
+      }
