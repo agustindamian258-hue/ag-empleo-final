@@ -72,7 +72,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           <span className="text-[9px] text-gray-400">menú</span>
         </button>
 
-        {/* Inicio / Buscar */}
+        {/* Inicio (empleo) / Buscar (social) */}
         {isSocial ? (
           <NavLink to="/search" label="Buscar" active={isActive('/search')} color={modeColor} bg={modeBg}>
             <MagnifyingGlassIcon className="w-[22px] h-[22px]" style={iconStyle('/search')} />
@@ -83,7 +83,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           </NavLink>
         )}
 
-        {/* Botón central */}
+        {/* Botón central — Publicar (social) / Empleos (empleo) */}
         <div className="flex flex-col items-center" style={{ marginTop: '-22px' }}>
           <button
             onClick={isSocial ? onPublishClick : () => navigate('/jobs')}
@@ -108,7 +108,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           </span>
         </div>
 
-        {/* Reels (Social) / Mensajes (Empleo) */}
+        {/* Reels (social) / Mensajes (empleo) */}
         {isSocial ? (
           <NavLink to="/reels" label="Reels" active={isActive('/reels')} color={modeColor} bg={modeBg}>
             <FilmIcon className="w-[22px] h-[22px]" style={iconStyle('/reels')} />
@@ -118,8 +118,10 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
             <div className="relative">
               <ChatBubbleLeftEllipsisIcon className="w-[22px] h-[22px]" style={iconStyle('/messages')} />
               {sinMensajes > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
-                  style={{ width: 16, height: 16, fontSize: 9, background: '#ef4444' }}>
+                <span
+                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
+                  style={{ width: 16, height: 16, fontSize: 9, background: '#ef4444' }}
+                >
                   {sinMensajes > 9 ? '9+' : sinMensajes}
                 </span>
               )}
@@ -127,13 +129,15 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           </NavLink>
         )}
 
-        {/* Alertas */}
+        {/* Alertas — siempre visible */}
         <NavLink to="/notificaciones" label="Alertas" active={isActive('/notificaciones')} color={modeColor} bg={modeBg}>
           <div className="relative">
             <BellIcon className="w-[22px] h-[22px]" style={iconStyle('/notificaciones')} />
             {sinLeer > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
-                style={{ width: 16, height: 16, fontSize: 9, background: '#ef4444' }}>
+              <span
+                className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
+                style={{ width: 16, height: 16, fontSize: 9, background: '#ef4444' }}
+              >
                 {sinLeer > 9 ? '9+' : sinLeer}
               </span>
             )}
@@ -142,6 +146,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
 
       </div>
 
+      {/* Barra de color inferior */}
       <div style={{
         height: 3,
         background: isSocial
@@ -160,7 +165,11 @@ function NavLink({ to, label, active, color, bg, children }: {
     <Link
       to={to}
       className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
-      style={active ? { background: bg, borderRadius: 12, padding: '4px 8px', marginTop: -4, marginBottom: -4 } : { padding: '4px 8px' }}
+      style={
+        active
+          ? { background: bg, borderRadius: 12, padding: '4px 8px', marginTop: -4, marginBottom: -4 }
+          : { padding: '4px 8px' }
+      }
     >
       {children}
       <span className="text-[9px] font-semibold" style={{ color: active ? color : '#9ca3af' }}>
@@ -168,4 +177,4 @@ function NavLink({ to, label, active, color, bg, children }: {
       </span>
     </Link>
   );
-}
+        }
