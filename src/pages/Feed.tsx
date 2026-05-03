@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import FloatingAI from '../components/FloatingAI';
@@ -24,18 +25,29 @@ export default function FeedPage() {
             <p className="text-gray-400 dark:text-gray-500 text-xs">Hola {nombre}, ¿qué está pasando?</p>
           </div>
 
-          {/* Solo botón Empleo — campana y Reels ya están en la barra inferior */}
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all"
-            style={{
-              background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
-              boxShadow: '0 3px 12px rgba(147,51,234,0.4)',
-            }}
-          >
-            <span className="text-[11px]">💼</span>
-            <span className="text-[10px] font-black text-white">Empleo</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Buscar movido al header superior */}
+            <button
+              onClick={() => navigate('/search')}
+              className="p-2 rounded-full bg-purple-50 dark:bg-purple-900/20 active:scale-95 transition-transform"
+              aria-label="Buscar usuarios"
+            >
+              <MagnifyingGlassIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            </button>
+
+            {/* Acceso rápido a Empleo */}
+            <button
+              onClick={() => navigate('/')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all"
+              style={{
+                background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+                boxShadow: '0 3px 12px rgba(147,51,234,0.4)',
+              }}
+            >
+              <span className="text-[11px]">💼</span>
+              <span className="text-[10px] font-black text-white">Empleo</span>
+            </button>
+          </div>
         </div>
 
         <Stories />
