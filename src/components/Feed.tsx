@@ -40,10 +40,11 @@ interface Comment {
 }
 
 interface FeedProps {
-  showCompose?: boolean;
-  soloCompose?: boolean;
-  zona?:        'social' | 'empleo';
-  onPublished?: () => void;
+  showCompose?:   boolean;
+  soloCompose?:   boolean;
+  zona?:          'social' | 'empleo';
+  onPublished?:   () => void;
+  mostrarFiltro?: boolean;
 }
 
 const MAX_FILE_SIZE_MB = 50;
@@ -255,7 +256,7 @@ function ModalComentarios({ postId, postUserId, onClose }: {
   );
 }
 
-export default function Feed({ showCompose = true, soloCompose = false, zona = 'social', onPublished }: FeedProps) {
+export default function Feed({ showCompose = true, soloCompose = false, zona = 'social', onPublished, mostrarFiltro = false }: FeedProps) {
   const user     = auth.currentUser;
   const navigate = useNavigate();
 
@@ -561,20 +562,22 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
         </div>
       )}
 
-      <div className="flex gap-2 pb-1">
-        <button
-          onClick={() => setSoloSeguidos(false)}
-          className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
-            !soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-          }`}
-        >Todos</button>
-        <button
-          onClick={() => setSoloSeguidos(true)}
-          className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
-            soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-          }`}
-        >Siguiendo</button>
-      </div>
+      {mostrarFiltro && (
+        <div className="flex gap-2 pb-1">
+          <button
+            onClick={() => setSoloSeguidos(false)}
+            className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
+              !soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+            }`}
+          >Todos</button>
+          <button
+            onClick={() => setSoloSeguidos(true)}
+            className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
+              soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+            }`}
+          >Siguiendo</button>
+        </div>
+      )}
 
       {postsFiltrados.map((p) => {
         const miReaccion     = p.reactions?.[user?.uid ?? ''];
@@ -719,4 +722,4 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-}
+  }
