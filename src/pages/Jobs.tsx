@@ -173,10 +173,11 @@ function ModalPublicar({
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
-        style={{ maxHeight: '92vh', paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}
+        className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl flex flex-col animate-slide-up"
+        style={{ maxHeight: '92vh' }}
       >
-        <div className="flex items-center justify-between">
+        {/* Header fijo */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
           <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">
             {editando ? 'Editar empleo' : 'Publicar empleo'}
           </h2>
@@ -188,88 +189,94 @@ function ModalPublicar({
           </button>
         </div>
 
-        <input name="titulo"    value={form.titulo}    onChange={handleChange} placeholder="Título del puesto *"  className={inputBase} maxLength={80} />
-        <input name="empresa"   value={form.empresa}   onChange={handleChange} placeholder="Empresa *"            className={inputBase} maxLength={80} />
-        <input name="ubicacion" value={form.ubicacion} onChange={handleChange} placeholder="Ubicación *"          className={inputBase} maxLength={80} />
-        <input name="salario"   value={form.salario}   onChange={handleChange} placeholder="Salario (opcional)"   className={inputBase} maxLength={40} />
+        {/* Contenido scrolleable */}
+        <div className="flex-1 overflow-y-auto px-5 space-y-4 pb-4">
+          <input name="titulo"    value={form.titulo}    onChange={handleChange} placeholder="Título del puesto *"  className={inputBase} maxLength={80} />
+          <input name="empresa"   value={form.empresa}   onChange={handleChange} placeholder="Empresa *"            className={inputBase} maxLength={80} />
+          <input name="ubicacion" value={form.ubicacion} onChange={handleChange} placeholder="Ubicación *"          className={inputBase} maxLength={80} />
+          <input name="salario"   value={form.salario}   onChange={handleChange} placeholder="Salario (opcional)"   className={inputBase} maxLength={40} />
 
-        <div className="relative">
-          <EnvelopeIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            name="contacto"
-            value={form.contacto}
-            onChange={handleChange}
-            placeholder="Email o WhatsApp de contacto (opcional)"
-            className={`${inputBase} pl-10`}
-            maxLength={80}
-          />
-        </div>
-
-        <div className="flex gap-2 flex-wrap">
-          {TIPOS_FORM.map((t) => (
-            <button
-              key={t} type="button"
-              onClick={() => setForm((p) => ({ ...p, tipo: t }))}
-              className={`px-3 py-1.5 rounded-full text-xs font-black transition-all active:scale-95 ${
-                form.tipo === t
-                  ? 'bg-[var(--sc-600)] text-white shadow'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              {t.toUpperCase()}
-            </button>
-          ))}
-        </div>
-
-        <textarea
-          name="descripcion"
-          value={form.descripcion}
-          onChange={handleChange}
-          placeholder="Descripción del puesto *"
-          rows={3}
-          className={`${inputBase} resize-none`}
-          maxLength={500}
-        />
-
-        {preview ? (
-          <div className="relative rounded-2xl overflow-hidden bg-black">
-            {(file?.type.startsWith('video') || empleoEditar?.mediaType === 'video') ? (
-              <video src={preview} controls className="w-full max-h-48 object-cover" />
-            ) : (
-              <img src={preview} alt="Vista previa" className="w-full max-h-48 object-cover" />
-            )}
-            <button
-              onClick={() => { setFile(null); setPreview(null); if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; } }}
-              className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
-            >✕</button>
+          <div className="relative">
+            <EnvelopeIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              name="contacto"
+              value={form.contacto}
+              onChange={handleChange}
+              placeholder="Email o WhatsApp de contacto (opcional)"
+              className={`${inputBase} pl-10`}
+              maxLength={80}
+            />
           </div>
-        ) : (
-          <label className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
-            <PhotoIcon className="w-5 h-5 text-[var(--sc-500)]" />
-            <span>Agregar foto o video (opcional)</span>
-            <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
-          </label>
-        )}
 
-        {errForm && (
-          <p className="text-red-500 text-xs flex items-center gap-1">
-            <ExclamationCircleIcon className="w-4 h-4 shrink-0" />
-            {errForm}
-          </p>
-        )}
+          <div className="flex gap-2 flex-wrap">
+            {TIPOS_FORM.map((t) => (
+              <button
+                key={t} type="button"
+                onClick={() => setForm((p) => ({ ...p, tipo: t }))}
+                className={`px-3 py-1.5 rounded-full text-xs font-black transition-all active:scale-95 ${
+                  form.tipo === t
+                    ? 'bg-[var(--sc-600)] text-white shadow'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                {t.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={guardando}
-          className="w-full py-4 rounded-2xl bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {guardando ? (
-            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{editando ? 'Guardando...' : 'Publicando...'}</>
+          <textarea
+            name="descripcion"
+            value={form.descripcion}
+            onChange={handleChange}
+            placeholder="Descripción del puesto *"
+            rows={3}
+            className={`${inputBase} resize-none`}
+            maxLength={500}
+          />
+
+          {preview ? (
+            <div className="relative rounded-2xl overflow-hidden bg-black">
+              {(file?.type.startsWith('video') || empleoEditar?.mediaType === 'video') ? (
+                <video src={preview} controls className="w-full max-h-48 object-cover" />
+              ) : (
+                <img src={preview} alt="Vista previa" className="w-full max-h-48 object-cover" />
+              )}
+              <button
+                onClick={() => { setFile(null); setPreview(null); if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; } }}
+                className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
+              >✕</button>
+            </div>
           ) : (
-            <><CheckIcon className="w-4 h-4" />{editando ? 'Guardar cambios' : 'Publicar empleo'}</>
+            <label className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
+              <PhotoIcon className="w-5 h-5 text-[var(--sc-500)]" />
+              <span>Agregar foto o video (opcional)</span>
+              <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
+            </label>
           )}
-        </button>
+
+          {errForm && (
+            <p className="text-red-500 text-xs flex items-center gap-1">
+              <ExclamationCircleIcon className="w-4 h-4 shrink-0" />
+              {errForm}
+            </p>
+          )}
+        </div>
+
+        {/* Botón fijo abajo */}
+        <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 shrink-0">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={guardando}
+            className="w-full py-4 rounded-2xl bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {guardando ? (
+              <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{editando ? 'Guardando...' : 'Publicando...'}</>
+            ) : (
+              <><CheckIcon className="w-4 h-4" />{editando ? 'Guardar cambios' : 'Publicar empleo'}</>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -408,14 +415,12 @@ export default function Jobs() {
                         <button
                           onClick={() => { setEmpleoEditar(empleo); setModalAbierto(true); }}
                           className="p-1.5 rounded-full bg-blue-50 dark:bg-blue-900/20 active:scale-90 transition-transform"
-                          aria-label="Editar"
                         >
                           <PencilIcon className="w-3.5 h-3.5 text-blue-500" />
                         </button>
                         <button
                           onClick={() => setEliminandoId(eliminandoId === empleo.id ? null : empleo.id)}
                           className="p-1.5 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform"
-                          aria-label="Eliminar"
                         >
                           <TrashIcon className="w-3.5 h-3.5 text-red-500" />
                         </button>
@@ -500,4 +505,4 @@ export default function Jobs() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-        }
+            }
