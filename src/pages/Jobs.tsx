@@ -498,4 +498,4 @@ export default function Jobs() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-        }
+          }
