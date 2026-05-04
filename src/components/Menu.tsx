@@ -3,13 +3,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { auth, db } from '../app/firebase';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import {
   BuildingOfficeIcon, MapIcon, DocumentTextIcon,
   ArrowLeftOnRectangleIcon, XMarkIcon, UserCircleIcon,
   BriefcaseIcon, ShieldCheckIcon, SunIcon, MoonIcon,
-  ChatBubbleLeftRightIcon, FilmIcon, MagnifyingGlassIcon,
+  FilmIcon, MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 
 interface UserData {
@@ -31,25 +31,20 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
   const location = useLocation();
   const { darkMode, toggleDarkMode } = useTheme();
 
-  const [userData,    setUserData]    = useState<UserData | null>(null);
-  const [errorCarga,  setErrorCarga]  = useState(false);
-  const [sinMensajes, setSinMensajes] = useState(0);
+  const [userData,   setUserData]   = useState<UserData | null>(null);
+  const [errorCarga, setErrorCarga] = useState(false);
 
   const isSocial = RUTAS_SOCIAL.some((r) => location.pathname.startsWith(r));
 
-  const headerBg     = isSocial ? 'bg-purple-700 dark:bg-purple-900' : 'bg-blue-600 dark:bg-blue-800';
-  const accentColor  = isSocial ? 'text-purple-600 dark:text-purple-400' : 'text-blue-600 dark:text-blue-400';
-  const accentBg     = isSocial
-    ? 'bg-purple-50 border-purple-100 dark:bg-purple-900/20 dark:border-purple-800'
-    : 'bg-teal-50 border-teal-100 dark:bg-teal-900/20 dark:border-teal-800';
-  const zonaNombre   = isSocial ? 'AG SOCIAL'            : 'AG EMPLEO';
+  const headerBg    = isSocial ? 'bg-purple-700 dark:bg-purple-900' : 'bg-blue-600 dark:bg-blue-800';
+  const accentColor = isSocial ? 'text-purple-600 dark:text-purple-400' : 'text-blue-600 dark:text-blue-400';
+  const zonaNombre  = isSocial ? 'AG SOCIAL' : 'AG EMPLEO';
   const zonaSubtitle = isSocial ? 'Tu red profesional social' : 'Tu experiencia laboral';
 
   useEffect(() => {
     if (!isOpen) return;
     const user = auth.currentUser;
     if (!user) return;
-
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
@@ -59,14 +54,6 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
         setErrorCarga(true);
       }
     })();
-
-    const q = query(
-      collection(db, 'chats'),
-      where('participants', 'array-contains', user.uid),
-      where('unreadBy',     'array-contains', user.uid),
-    );
-    const unsub = onSnapshot(q, (snap) => setSinMensajes(snap.size), console.error);
-    return () => unsub();
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -89,7 +76,6 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
     }
   };
 
-  // Navega pasando la zona como state → Profile.tsx la lee para abrir el tab correcto
   const goTo = (path: string) => {
     navigate(path, { state: { zona: isSocial ? 'social' : 'empleo' } });
     onClose();
@@ -120,9 +106,9 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
 
   const herramientasSocial = [
     {
-      label: 'Reels',          sub: 'Videos cortos',     path: '/reels',
+      label: 'Reels',           sub: 'Videos cortos',     path: '/reels',
       iconClass: 'text-pink-600',   bgClass: 'bg-pink-50 border-pink-100 dark:bg-pink-900/20 dark:border-pink-800',
-      Icon: FilmIcon,          textClass: 'text-pink-900 dark:text-pink-200',   subClass: 'text-pink-400',
+      Icon: FilmIcon,           textClass: 'text-pink-900 dark:text-pink-200',   subClass: 'text-pink-400',
     },
     {
       label: 'Buscar personas', sub: 'Encontrá usuarios', path: '/search',
@@ -131,9 +117,9 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
     },
   ] as const;
 
-  const herramientas    = isSocial ? herramientasSocial : herramientasEmpleo;
-  const perfilLabel     = isSocial ? 'Mi Perfil Social'        : 'Mi Perfil de Empleo';
-  const perfilSubtitle  = isSocial ? 'Bio, posts y seguidores' : 'CV, cargo y disponibilidad';
+  const herramientas   = isSocial ? herramientasSocial : herramientasEmpleo;
+  const perfilLabel    = isSocial ? 'Mi Perfil Social'        : 'Mi Perfil de Empleo';
+  const perfilSubtitle = isSocial ? 'Bio, posts y seguidores' : 'CV, cargo y disponibilidad';
 
   return (
     <div
@@ -147,34 +133,22 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
         className="w-4/5 h-full bg-white dark:bg-gray-900 shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header dinámico */}
+        {/* Header */}
         <div className={`p-5 ${headerBg} text-white`}>
           <div className="flex justify-between items-start mb-4">
             <div>
               <h2 className="text-xl font-black tracking-tighter">{zonaNombre}</h2>
               <p className="text-xs opacity-75">{zonaSubtitle}</p>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 bg-white/20 rounded-full active:scale-90 transition-transform"
-              aria-label="Cerrar menú"
-            >
+            <button onClick={onClose} className="p-2 bg-white/20 rounded-full active:scale-90 transition-transform" aria-label="Cerrar menú">
               <XMarkIcon className="w-5 h-5 text-white" />
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <img
-              src={avatarUrl}
-              alt={`Foto de ${userData?.name || 'usuario'}`}
-              className="w-12 h-12 rounded-full border-2 border-white/50 object-cover"
-            />
+            <img src={avatarUrl} alt={`Foto de ${userData?.name || 'usuario'}`} className="w-12 h-12 rounded-full border-2 border-white/50 object-cover" />
             <div>
-              <p className="font-black text-sm">
-                {userData?.name || user?.displayName || 'Usuario'}
-              </p>
-              <p className="text-xs opacity-75">
-                {errorCarga ? 'Error al cargar perfil' : userData?.title || 'Completá tu perfil'}
-              </p>
+              <p className="font-black text-sm">{userData?.name || user?.displayName || 'Usuario'}</p>
+              <p className="text-xs opacity-75">{errorCarga ? 'Error al cargar perfil' : userData?.title || 'Completá tu perfil'}</p>
               <span className="inline-block mt-1 text-[9px] font-black uppercase tracking-widest bg-white/20 rounded-full px-2 py-0.5">
                 {isSocial ? '🌐 Zona Social' : '💼 Zona Empleo'}
               </span>
@@ -184,26 +158,6 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
 
         {/* Opciones */}
         <div className="flex-grow p-4 space-y-2 overflow-y-auto">
-
-          {/* Mensajes */}
-          <button
-            onClick={() => goTo('/messages')}
-            className={`w-full flex items-center justify-between gap-4 p-4 rounded-2xl active:scale-95 transition-all border ${accentBg} mb-3`}
-          >
-            <div className="flex items-center gap-4">
-              <ChatBubbleLeftRightIcon className={`w-6 h-6 ${accentColor}`} />
-              <div className="text-left">
-                <p className={`font-black text-sm ${accentColor}`}>Mensajes</p>
-                <p className="text-xs text-gray-400">Chat directo con usuarios</p>
-              </div>
-            </div>
-            {sinMensajes > 0 && (
-              <span className="w-6 h-6 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shrink-0">
-                {sinMensajes > 9 ? '9+' : sinMensajes}
-              </span>
-            )}
-          </button>
-
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 pb-1">
             {isSocial ? 'Explorar' : 'Herramientas'}
           </p>
@@ -224,11 +178,8 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
 
           {/* Cuenta */}
           <div className="pt-2">
-            <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">
-              Cuenta
-            </p>
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2 mb-3">Cuenta</p>
 
-            {/* Perfil — tab se abre según zona via location.state */}
             <button
               onClick={() => goTo('/profile')}
               className="w-full flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl active:scale-95 transition-all border border-gray-100 dark:border-gray-700"
@@ -255,7 +206,7 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
               <div className="flex items-center gap-4">
                 {darkMode
                   ? <SunIcon  className="w-6 h-6 text-yellow-500" />
-                  : <MoonIcon className="w-6 h-6 text-gray-500"   />
+                  : <MoonIcon className="w-6 h-6 text-gray-500" />
                 }
                 <p className="font-bold text-gray-700 dark:text-gray-200 text-sm">
                   {darkMode ? 'Modo claro' : 'Modo oscuro'}
@@ -281,4 +232,4 @@ export default function Menu({ isOpen, onClose }: MenuProps) {
       </div>
     </div>
   );
-                }
+}
