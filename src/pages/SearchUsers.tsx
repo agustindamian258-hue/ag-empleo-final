@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../app/firebase';
 import {
-  collection, query, where, getDocs,
+  collection, getDocs,
   doc, setDoc, deleteDoc, serverTimestamp, getDoc,
 } from 'firebase/firestore';
 import {
@@ -15,11 +15,12 @@ import Menu  from '../components/Menu';
 const ZONA = 'social' as const;
 
 interface UsuarioBuscado {
-  uid:    string;
-  name:   string;
-  photo:  string;
-  title?: string;
-  ciudad?: string;
+  uid:       string;
+  name:      string;
+  nameLower?: string;
+  photo:     string;
+  title?:    string;
+  ciudad?:   string;
 }
 
 export default function SearchUsers() {
@@ -41,15 +42,15 @@ export default function SearchUsers() {
     if (termino.trim().length < 2) { setResultados([]); return; }
     setCargando(true);
     try {
-      const q = query(
-        collection(db, 'users'),
-        where('name', '>=', termino),
-        where('name', '<=', termino + '\uf8ff')
-      );
-      const snap = await getDocs(q);
+      const terminoLower = termino.toLowerCase();
+      const snap = await getDocs(collection(db, 'users'));
       const users = snap.docs
         .map((d) => ({ uid: d.id, ...d.data() } as UsuarioBuscado))
-        .filter((u) => u.uid !== me?.uid);
+        .filter((u) => {
+          if (u.uid === me?.uid) return false;
+          const nombreLower = (u.nameLower ?? u.name ?? '').toLowerCase();
+          return nombreLower.includes(terminoLower);
+        });
       setResultados(users);
 
       if (me) {
