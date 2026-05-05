@@ -1,8 +1,9 @@
+// src/app/firebase.ts
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getAnalytics, logEvent } from "firebase/analytics";
+import { getAnalytics, logEvent, isSupported } from "firebase/analytics";
 
 const requiredEnvVars = [
   "VITE_FIREBASE_API_KEY",
@@ -18,6 +19,8 @@ if (missing.length > 0) {
   console.error("[AG Empleo] Variables de entorno faltantes:", missing);
 }
 
+const measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ?? undefined;
+
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY             ?? "",
   authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN         ?? "",
@@ -25,16 +28,20 @@ const firebaseConfig = {
   storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET      ?? "",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
   appId:             import.meta.env.VITE_FIREBASE_APP_ID              ?? "",
-  measurementId:     "G-M5G5ED0YC6",
+  ...(measurementId ? { measurementId } : {}),
 };
 
 const app = initializeApp(firebaseConfig);
 
-export const auth      = getAuth(app);
-export const provider  = new GoogleAuthProvider();
-export const db        = getFirestore(app);
-export const storage   = getStorage(app);
-export const analytics = getAnalytics(app);
+export const auth     = getAuth(app);
+export const provider = new GoogleAuthProvider();
+export const db       = getFirestore(app);
+export const storage  = getStorage(app);
+
+export const analytics = await isSupported().then((yes) =>
+  yes && measurementId ? getAnalytics(app) : null
+).catch(() => null);
+
 export { logEvent };
 
 export const CLOUDINARY_CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME ?? "";
