@@ -12,6 +12,8 @@ import {
 import Navbar from '../components/Navbar';
 import Menu  from '../components/Menu';
 
+const ZONA = 'social' as const;
+
 interface UsuarioBuscado {
   uid:    string;
   name:   string;
@@ -30,6 +32,10 @@ export default function SearchUsers() {
   const [siguiendo,  setSiguiendo]  = useState<Record<string, boolean>>({});
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  function followId(targetUid: string): string {
+    return `${me!.uid}_${targetUid}_${ZONA}`;
+  }
+
   async function buscar(termino: string) {
     setBusqueda(termino);
     if (termino.trim().length < 2) { setResultados([]); return; }
@@ -46,23 +52,22 @@ export default function SearchUsers() {
         .filter((u) => u.uid !== me?.uid);
       setResultados(users);
 
-      // Verificar cuáles sigo
       if (me) {
         const followStates: Record<string, boolean> = {};
         await Promise.all(users.map(async (u) => {
-          const ref  = doc(db, 'follows', `${me.uid}_${u.uid}`);
+          const ref  = doc(db, 'follows', followId(u.uid));
           const snap = await getDoc(ref);
           followStates[u.uid] = snap.exists();
         }));
         setSiguiendo(followStates);
       }
-    } catch (e) { console.error('[Search]', e); }
+    } catch (e) { console.error('[SearchUsers.buscar]', e); }
     finally { setCargando(false); }
   }
 
   async function handleFollow(uid: string) {
     if (!me) return;
-    const followRef = doc(db, 'follows', `${me.uid}_${uid}`);
+    const followRef = doc(db, 'follows', followId(uid));
     if (siguiendo[uid]) {
       await deleteDoc(followRef);
       setSiguiendo((p) => ({ ...p, [uid]: false }));
@@ -70,6 +75,7 @@ export default function SearchUsers() {
       await setDoc(followRef, {
         followerId:  me.uid,
         followingId: uid,
+        zona:        ZONA,
         createdAt:   serverTimestamp(),
       });
       setSiguiendo((p) => ({ ...p, [uid]: true }));
@@ -79,7 +85,6 @@ export default function SearchUsers() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
 
-      {/* Header */}
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => navigate(-1)} className="p-2 rounded-full bg-gray-100 dark:bg-gray-800 active:scale-90 transition-transform">
           <ArrowLeftIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
