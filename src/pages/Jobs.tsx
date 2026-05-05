@@ -1,15 +1,14 @@
 // src/pages/Jobs.tsx
 import { useState, useEffect, useRef } from 'react';
 import { db, auth } from '../app/firebase';
-import { storage } from '../app/firebase';
 import {
   collection, query, orderBy, onSnapshot,
   addDoc, serverTimestamp, doc, updateDoc, deleteDoc,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import Navbar from '../components/Navbar';
 import Menu   from '../components/Menu';
+import { subirArchivoCloudinary } from '../utils/cloudinary';
 import {
   BriefcaseIcon, MapPinIcon, CurrencyDollarIcon,
   MagnifyingGlassIcon, ExclamationCircleIcon,
@@ -121,15 +120,14 @@ function ModalPublicar({
     }
     setGuardando(true); setErrForm('');
     try {
-      let mediaUrl  = empleoEditar?.mediaUrl  ?? '';
+      let mediaUrl:  string            = empleoEditar?.mediaUrl  ?? '';
       let mediaType: 'image' | 'video' | '' = empleoEditar?.mediaType ?? '';
 
-      if (file && storage) {
+      if (file) {
         try {
-          const sRef = storageRef(storage, `empleos/${Date.now()}_${file.name}`);
-          await uploadBytes(sRef, file);
-          mediaUrl  = await getDownloadURL(sRef);
-          mediaType = file.type.startsWith('video') ? 'video' : 'image';
+          const { url, tipo } = await subirArchivoCloudinary(file);
+          mediaUrl  = url;
+          mediaType = tipo;
         } catch {
           setErrForm('No se pudo subir el archivo. Se publicará sin imagen.');
         }
@@ -143,7 +141,8 @@ function ModalPublicar({
         tipo:        form.tipo,
         descripcion: form.descripcion.trim(),
         contacto:    form.contacto.trim() || null,
-        mediaUrl, mediaType,
+        mediaUrl,
+        mediaType,
       };
 
       if (editando && empleoEditar) {
@@ -239,7 +238,10 @@ function ModalPublicar({
               <img src={preview} alt="Vista previa" className="w-full max-h-48 object-cover" />
             )}
             <button
-              onClick={() => { setFile(null); setPreview(null); if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; } }}
+              onClick={() => {
+                setFile(null); setPreview(null);
+                if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; }
+              }}
               className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
             >✕</button>
           </div>
@@ -276,16 +278,16 @@ function ModalPublicar({
 }
 
 export default function Jobs() {
-  const [empleos,       setEmpleos]       = useState<Empleo[]>([]);
-  const [cargando,      setCargando]      = useState(true);
-  const [error,         setError]         = useState('');
-  const [filtro,        setFiltro]        = useState('todos');
-  const [busqueda,      setBusqueda]      = useState('');
-  const [isMenuOpen,    setIsMenuOpen]    = useState(false);
-  const [modalAbierto,  setModalAbierto]  = useState(false);
-  const [empleoEditar,  setEmpleoEditar]  = useState<Empleo | null>(null);
-  const [eliminandoId,  setEliminandoId]  = useState<string | null>(null);
-  const [usuario,       setUsuario]       = useState<User | null>(null);
+  const [empleos,      setEmpleos]      = useState<Empleo[]>([]);
+  const [cargando,     setCargando]     = useState(true);
+  const [error,        setError]        = useState('');
+  const [filtro,       setFiltro]       = useState('todos');
+  const [busqueda,     setBusqueda]     = useState('');
+  const [isMenuOpen,   setIsMenuOpen]   = useState(false);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [empleoEditar, setEmpleoEditar] = useState<Empleo | null>(null);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+  const [usuario,      setUsuario]      = useState<User | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUsuario);
@@ -304,9 +306,8 @@ export default function Jobs() {
   async function handleEliminar(empleo: Empleo) {
     if (!usuario || usuario.uid !== empleo.uid) return;
     setEliminandoId(null);
-    try {
-      await deleteDoc(doc(db, 'empleos', empleo.id));
-    } catch (e) { console.error('[Jobs] eliminar:', e); }
+    try { await deleteDoc(doc(db, 'empleos', empleo.id)); }
+    catch (e) { console.error('[Jobs] eliminar:', e); }
   }
 
   const empleosFiltrados = empleos.filter((e) => {
@@ -498,4 +499,4 @@ export default function Jobs() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-          }
+        }
