@@ -67,7 +67,9 @@ function esCoordValida(pos: unknown): pos is Coordenada {
   return (
     Array.isArray(pos) && pos.length === 2 &&
     typeof pos[0] === 'number' && !isNaN(pos[0]) &&
-    typeof pos[1] === 'number' && !isNaN(pos[1])
+    typeof pos[1] === 'number' && !isNaN(pos[1]) &&
+    pos[0] >= -90  && pos[0] <= 90 &&
+    pos[1] >= -180 && pos[1] <= 180
   );
 }
 
@@ -77,7 +79,6 @@ function CentrarMapa({ centro }: { centro: Coordenada }) {
   return null;
 }
 
-// Selector de ubicación tocando el mapa
 function SelectorUbicacion({
   activo,
   onSeleccionar,
@@ -108,7 +109,6 @@ export default function MapPage() {
   const [errorGeo,       setErrorGeo]       = useState<string>('');
   const [errorFirebase,  setErrorFirebase]  = useState<string>('');
 
-  // Modal publicar changa
   const [modalAbierto,   setModalAbierto]   = useState(false);
   const [form,           setForm]           = useState<FormChanga>(FORM_INICIAL);
   const [posSelec,       setPosSelec]       = useState<Coordenada | null>(null);
@@ -203,7 +203,6 @@ export default function MapPage() {
   return (
     <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-950 flex flex-col">
 
-      {/* Header */}
       <div className="p-4 flex justify-between items-center bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 shadow-sm">
         <div>
           <h2 className="font-black text-xl text-blue-900 dark:text-blue-300">Mapa de Changas</h2>
@@ -227,7 +226,6 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Aviso modo selección */}
       {eligiendoPos && (
         <div className="px-4 py-2 bg-green-500 flex items-center justify-between text-white text-xs font-bold">
           <span>📍 Tocá el mapa para marcar la ubicación</span>
@@ -235,7 +233,6 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Filtros */}
       <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 space-y-3">
         <div className="flex justify-between items-center">
           <span className="text-sm font-bold text-gray-600 dark:text-gray-400">Radio de búsqueda</span>
@@ -265,7 +262,6 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* Mapa */}
       <div className="flex-grow relative">
         {localizando && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
@@ -295,7 +291,6 @@ export default function MapPage() {
             radius={distancia * 1000}
             pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.08 }}
           />
-          {/* Marker de posición seleccionada */}
           {posSelec && <Marker position={posSelec}><Popup>Ubicación seleccionada</Popup></Marker>}
 
           {changasFiltradas.map((c) => (
@@ -314,7 +309,6 @@ export default function MapPage() {
           ))}
         </MapContainer>
 
-        {/* FAB publicar changa */}
         {auth.currentUser && !eligiendoPos && (
           <button
             onClick={() => setEligiendoPos(true)}
@@ -326,7 +320,6 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* Modal formulario changa */}
       {modalAbierto && (
         <div
           className="fixed inset-0 z-[500] flex items-end justify-center bg-black/50 backdrop-blur-sm"
@@ -343,7 +336,6 @@ export default function MapPage() {
               </button>
             </div>
 
-            {/* Ubicación seleccionada */}
             {posSelec && (
               <div className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/20 rounded-2xl text-green-700 dark:text-green-400 text-xs font-bold">
                 <CheckIcon className="w-4 h-4 shrink-0" />
@@ -387,7 +379,6 @@ export default function MapPage() {
               maxLength={40}
             />
 
-            {/* Urgencia */}
             <div className="flex gap-2">
               {(['urgente', 'semana', 'mes'] as const).map((u) => (
                 <button
@@ -426,4 +417,4 @@ export default function MapPage() {
       )}
     </div>
   );
-          }
+                                }
