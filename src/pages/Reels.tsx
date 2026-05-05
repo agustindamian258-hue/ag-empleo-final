@@ -1,12 +1,12 @@
 // src/pages/Reels.tsx
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { db, auth, storage } from '../app/firebase';
+import { db, auth } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
   doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove,
   limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { subirArchivoCloudinary } from '../utils/cloudinary';
 import {
   PlusIcon, XMarkIcon, ArrowUpTrayIcon,
   ExclamationCircleIcon, ChatBubbleOvalLeftIcon,
@@ -101,19 +101,12 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
 
   useEffect(() => {
     const q = query(collection(db, 'reels', reelId, 'comments'), orderBy('createdAt', 'asc'));
-    const unsub = onSnapshot(q, (snap) =>
+    return onSnapshot(q, (snap) =>
       setComments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Comment)))
     );
-    return () => unsub();
   }, [reelId]);
 
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 300); }, []);
-
-  function handleResponder(comment: Comment) {
-    setRespondiendo({ id: comment.id, nombre: comment.userName });
-    setTexto(`@${comment.userName} `);
-    inputRef.current?.focus();
-  }
 
   async function handleLikeComentario(comment: Comment) {
     if (!user) return;
@@ -142,7 +135,7 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
       await crearNotificacion({
         uid: reelUserId,
         titulo: `💬 ${user.displayName ?? 'Alguien'} comentó tu reel`,
-        mensaje: texto.trim().slice(0, 80), tipo: 'like',
+        mensaje: texto.trim().slice(0, 80), tipo: 'comentario',
       });
       setTexto(''); setRespondiendo(null);
     } catch (e) { console.error('[Reels] comentar:', e); }
@@ -188,7 +181,10 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
                         <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-500'}`}>{c.likes?.length}</span>
                       )}
                     </button>
-                    <button onClick={() => handleResponder(c)} className="text-xs text-gray-500 font-bold active:scale-95 transition-transform">
+                    <button
+                      onClick={() => { setRespondiendo({ id: c.id, nombre: c.userName }); setTexto(`@${c.userName} `); inputRef.current?.focus(); }}
+                      className="text-xs text-gray-500 font-bold active:scale-95 transition-transform"
+                    >
                       Responder
                     </button>
                   </div>
@@ -251,14 +247,13 @@ export default function Reels() {
   const [hayMas,         setHayMas]         = useState(true);
   const [cargandoMas,    setCargandoMas]    = useState(false);
 
-  const previewRef = useRef<string | null>(null);
-  const videoRefs  = useRef<(HTMLVideoElement | null)[]>([]);
+  const previewRef   = useRef<string | null>(null);
+  const videoRefs    = useRef<(HTMLVideoElement | null)[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Carga inicial con paginación
   useEffect(() => {
     const q = query(collection(db, 'reels'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
-    const unsub = onSnapshot(q,
+    return onSnapshot(q,
       (snap) => {
         setReels(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Reel)));
         setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
@@ -266,7 +261,6 @@ export default function Reels() {
       },
       (err) => console.error('[Reels]', err)
     );
-    return () => unsub();
   }, []);
 
   const cargarMas = useCallback(async () => {
@@ -275,15 +269,13 @@ export default function Reels() {
     try {
       const q    = query(collection(db, 'reels'), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE));
       const snap = await getDocs(q);
-      const nuevos = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Reel));
-      setReels((prev) => [...prev, ...nuevos]);
+      setReels((prev) => [...prev, ...snap.docs.map((d) => ({ id: d.id, ...d.data() } as Reel))]);
       setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
       setHayMas(snap.docs.length === PAGE_SIZE);
     } catch (e) { console.error('[Reels] cargarMas:', e); }
     finally { setCargandoMas(false); }
   }, [lastDoc, cargandoMas, hayMas]);
 
-  // Auto-play con IntersectionObserver + cargar más al llegar al final
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
     videoRefs.current.forEach((vid, i) => {
@@ -292,10 +284,7 @@ export default function Reels() {
         ([entry]) => {
           if (entry.isIntersecting) {
             vid.play().catch(() => {});
-            // Si es el penúltimo, cargamos más
-            if (i === reels.length - 2 && hayMas && !cargandoMas) {
-              cargarMas();
-            }
+            if (i === reels.length - 2 && hayMas && !cargandoMas) cargarMas();
           } else {
             vid.pause();
             vid.currentTime = 0;
@@ -323,12 +312,9 @@ export default function Reels() {
 
   const handleSubir = async () => {
     if (!user || !file) return;
-    setSubiendo(true); setError(''); setProgreso(0);
+    setSubiendo(true); setError(''); setProgreso(20);
     try {
-      const sRef = storageRef(storage, `reels/${Date.now()}_${file.name}`);
-      await uploadBytes(sRef, file);
-      setProgreso(60);
-      const videoUrl = await getDownloadURL(sRef);
+      const { url: videoUrl } = await subirArchivoCloudinary(file);
       setProgreso(80);
       await addDoc(collection(db, 'reels'), {
         videoUrl, caption: caption.trim(),
@@ -376,7 +362,7 @@ export default function Reels() {
   };
 
   return (
-    <div className="bg-black min-h-screen pb-20">
+    <div className="bg-black min-h-screen">
       <header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-5 py-4 bg-gradient-to-b from-black/80 to-transparent">
         <h1 className="text-xl font-black text-white tracking-tighter">Reels</h1>
         {user && (
@@ -410,7 +396,7 @@ export default function Reels() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
 
-              <div className="absolute bottom-24 left-4 right-16 text-white">
+              <div className="absolute bottom-28 left-4 right-16 text-white">
                 <div className="flex items-center gap-2 mb-2">
                   <img src={r.userPhoto || avatarFallback} alt={r.userName} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
                   <span className="font-black text-sm drop-shadow">{r.userName}</span>
@@ -418,7 +404,7 @@ export default function Reels() {
                 {r.caption && <p className="text-sm leading-snug text-white/90 drop-shadow line-clamp-2">{r.caption}</p>}
               </div>
 
-              <div className="absolute right-4 bottom-32 flex flex-col items-center gap-6">
+              <div className="absolute right-4 bottom-36 flex flex-col items-center gap-6">
                 <div className="relative flex flex-col items-center gap-1">
                   <button
                     onClick={() => setReaccionandoId(reaccionandoId === r.id ? null : r.id)}
@@ -451,14 +437,12 @@ export default function Reels() {
           );
         })}
 
-        {/* Indicador cargando más */}
         {cargandoMas && (
           <div className="h-20 flex items-center justify-center snap-start">
             <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
-        {/* Sin más reels */}
         {!hayMas && reels.length > 0 && (
           <div className="h-20 flex items-center justify-center snap-start">
             <p className="text-white/30 text-xs font-bold">Ya viste todos los reels</p>
@@ -471,7 +455,10 @@ export default function Reels() {
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
           onClick={(e) => e.target === e.currentTarget && setModalSubir(false)}
         >
-          <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-4 animate-slide-up">
+          <div
+            className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
+            style={{ maxHeight: '80vh', paddingBottom: 'calc(env(safe-area-inset-bottom) + 100px)' }}
+          >
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-black text-white">Subir Reel</h2>
               <button onClick={() => setModalSubir(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
@@ -481,7 +468,10 @@ export default function Reels() {
             {preview ? (
               <div className="relative rounded-2xl overflow-hidden bg-black max-h-64">
                 <video src={preview} className="w-full h-full object-cover" controls />
-                <button onClick={() => { setFile(null); setPreview(null); }} className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold">✕</button>
+                <button
+                  onClick={() => { setFile(null); setPreview(null); if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; } }}
+                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
+                >✕</button>
               </div>
             ) : (
               <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-gray-700 rounded-2xl py-10 cursor-pointer">
@@ -533,4 +523,4 @@ export default function Reels() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-                    }
+              }
