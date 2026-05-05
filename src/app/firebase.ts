@@ -3,7 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getAnalytics, logEvent, isSupported } from "firebase/analytics";
+import { getAnalytics, logEvent } from "firebase/analytics";
 
 const requiredEnvVars = [
   "VITE_FIREBASE_API_KEY",
@@ -35,7 +35,7 @@ export const auth      = getAuth(app);
 export const provider  = new GoogleAuthProvider();
 export const db        = getFirestore(app);
 export const storage   = getStorage(app);
-export const analytics = isSupported().then((yes) => yes ? getAnalytics(app) : null).catch(() => null);
+export const analytics = getAnalytics(app);
 export { logEvent };
 
 export const CLOUDINARY_CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME ?? "";
