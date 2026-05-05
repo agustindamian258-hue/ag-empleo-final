@@ -34,7 +34,6 @@ export default function FloatingAI() {
   const [historial, setHistorial] = useState<Mensaje[]>([MENSAJE_INICIAL]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Si no hay API key, no renderizar nada
   if (!API_KEY_DISPONIBLE) return null;
 
   useEffect(() => {
@@ -65,16 +64,19 @@ export default function FloatingAI() {
     setMensaje('');
     setCargando(true);
 
-    const nuevoHistorial: Mensaje[] = [
-      ...historial,
-      { id: `user_${Date.now()}`, role: 'user', content: userMsg },
-    ];
-    setHistorial(nuevoHistorial);
+    const msgUsuario: Mensaje = { id: `user_${Date.now()}`, role: 'user', content: userMsg };
+
+    setHistorial(prev => {
+      const actualizado = [...prev.slice(-MAX_HISTORIAL), msgUsuario];
+      return actualizado;
+    });
 
     try {
       const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
       const perfil = await obtenerPerfilUsuario();
       const systemFinal = perfil ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}` : SYSTEM_PROMPT;
+
+      const ventana = [...historial.slice(-MAX_HISTORIAL), msgUsuario];
 
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -88,7 +90,7 @@ export default function FloatingAI() {
           model: 'meta-llama/llama-4-scout:free',
           messages: [
             { role: 'system', content: systemFinal },
-            ...nuevoHistorial.slice(-MAX_HISTORIAL).map(h => ({
+            ...ventana.map(h => ({
               role:    h.role === 'ai' ? 'assistant' : 'user',
               content: h.content,
             })),
@@ -100,11 +102,11 @@ export default function FloatingAI() {
       if (!response.ok) throw new Error(`ERROR ${response.status}: ${JSON.stringify(data?.error ?? data)}`);
 
       const texto = data.choices?.[0]?.message?.content?.trim() || '¿Me lo repetís? No entendí bien.';
-      setHistorial(prev => [...prev, { id: `ai_${Date.now()}`, role: 'ai', content: texto }]);
+      setHistorial(prev => [...prev.slice(-MAX_HISTORIAL), { id: `ai_${Date.now()}`, role: 'ai', content: texto }]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[FloatingAI] Error:', msg);
-      setHistorial(prev => [...prev, { id: `ai_err_${Date.now()}`, role: 'ai', content: `⚠️ ${msg}` }]);
+      setHistorial(prev => [...prev.slice(-MAX_HISTORIAL), { id: `ai_err_${Date.now()}`, role: 'ai', content: `⚠️ ${msg}` }]);
     } finally {
       setCargando(false);
     }
@@ -183,4 +185,4 @@ export default function FloatingAI() {
       )}
     </>
   );
-}
+              }
