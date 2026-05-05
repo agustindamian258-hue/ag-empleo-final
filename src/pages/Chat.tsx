@@ -8,11 +8,15 @@ import {
 } from 'firebase/firestore';
 import { ArrowLeftIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 
+interface FirestoreTimestamp {
+  toDate: () => Date;
+}
+
 interface Message {
   id: string;
   senderId: string;
   text: string;
-  createdAt: any;
+  createdAt: FirestoreTimestamp | null;
 }
 
 interface OtherUser {
@@ -129,10 +133,13 @@ export default function Chat() {
     e.target.style.height = Math.min(e.target.scrollHeight, 112) + 'px';
   }
 
-  function formatTime(ts: any): string {
-    if (!ts) return '';
-    try { return ts.toDate().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }); }
-    catch { return ''; }
+  function formatTime(ts: FirestoreTimestamp | null): string {
+    if (!ts || typeof ts.toDate !== 'function') return '';
+    try {
+      return ts.toDate().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '';
+    }
   }
 
   const avatarUrl =
@@ -141,7 +148,6 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col bg-gray-50 dark:bg-gray-950" style={{ height: '100dvh' }}>
-      {/* Header */}
       <header className="shrink-0 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-4 py-3 flex items-center gap-3 shadow-sm z-10">
         <button
           onClick={() => navigate(-1)}
@@ -153,7 +159,6 @@ export default function Chat() {
         <p className="font-black text-gray-900 dark:text-white text-sm truncate">{otherUser.name}</p>
       </header>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
@@ -186,7 +191,6 @@ export default function Chat() {
         <div ref={bottomRef} className="h-1" />
       </div>
 
-      {/* Input */}
       <div className="shrink-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 px-3 py-3 flex items-end gap-2">
         <textarea
           ref={textareaRef}
