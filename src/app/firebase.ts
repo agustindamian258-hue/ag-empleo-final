@@ -19,8 +19,6 @@ if (missing.length > 0) {
   console.error("[AG Empleo] Variables de entorno faltantes:", missing);
 }
 
-const measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ?? undefined;
-
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY             ?? "",
   authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN         ?? "",
@@ -28,20 +26,16 @@ const firebaseConfig = {
   storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET      ?? "",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
   appId:             import.meta.env.VITE_FIREBASE_APP_ID              ?? "",
-  ...(measurementId ? { measurementId } : {}),
+  measurementId:     "G-M5G5ED0YC6",
 };
 
 const app = initializeApp(firebaseConfig);
 
-export const auth     = getAuth(app);
-export const provider = new GoogleAuthProvider();
-export const db       = getFirestore(app);
-export const storage  = getStorage(app);
-
-export const analytics = await isSupported().then((yes) =>
-  yes && measurementId ? getAnalytics(app) : null
-).catch(() => null);
-
+export const auth      = getAuth(app);
+export const provider  = new GoogleAuthProvider();
+export const db        = getFirestore(app);
+export const storage   = getStorage(app);
+export const analytics = isSupported().then((yes) => yes ? getAnalytics(app) : null).catch(() => null);
 export { logEvent };
 
 export const CLOUDINARY_CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME ?? "";
