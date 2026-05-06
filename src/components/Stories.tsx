@@ -1,11 +1,11 @@
 // src/components/Stories.tsx
 import { useState, useEffect, useRef } from 'react';
-import { db, auth, storage } from '../app/firebase';
+import { db, auth } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy,
   onSnapshot, serverTimestamp, where,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { subirArchivoCloudinary } from '../utils/cloudinary';
 import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface Story {
@@ -26,22 +26,14 @@ interface StoryGroup {
   visto:     boolean;
 }
 
-const MAX_MB = 50;
-const STORY_EXPIRE_MS = 24 * 60 * 60 * 1000; // 24hs
+const MAX_MB          = 50;
+const STORY_EXPIRE_MS = 12 * 60 * 60 * 1000; // 12hs
 
-// ─── Visor de story ───────────────────────────────────────────────────────────
-
-function VisorStory({
-  grupo,
-  onClose,
-}: {
-  grupo: StoryGroup;
-  onClose: () => void;
-}) {
-  const [idx,       setIdx]       = useState(0);
-  const [progreso,  setProgreso]  = useState(0);
+function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void }) {
+  const [idx,      setIdx]      = useState(0);
+  const [progreso, setProgreso] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const story = grupo.stories[idx];
+  const story    = grupo.stories[idx];
   const DURACION = story?.mediaType === 'video' ? 15000 : 5000;
 
   useEffect(() => {
@@ -53,11 +45,8 @@ function VisorStory({
       setProgreso(p);
       if (p >= 100) {
         clearInterval(timerRef.current!);
-        if (idx < grupo.stories.length - 1) {
-          setIdx((i) => i + 1);
-        } else {
-          onClose();
-        }
+        if (idx < grupo.stories.length - 1) setIdx((i) => i + 1);
+        else onClose();
       }
     }, 50);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
@@ -67,7 +56,6 @@ function VisorStory({
 
   return (
     <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center">
-      {/* Barras de progreso */}
       <div className="absolute top-4 left-3 right-3 flex gap-1 z-10">
         {grupo.stories.map((_, i) => (
           <div key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
@@ -79,7 +67,6 @@ function VisorStory({
         ))}
       </div>
 
-      {/* Header */}
       <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
           <img
@@ -99,24 +86,12 @@ function VisorStory({
         </button>
       </div>
 
-      {/* Media */}
       {story.mediaType === 'video' ? (
-        <video
-          src={story.mediaUrl}
-          autoPlay
-          muted
-          playsInline
-          className="w-full h-full object-cover"
-        />
+        <video src={story.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover" />
       ) : (
-        <img
-          src={story.mediaUrl}
-          alt="story"
-          className="w-full h-full object-cover"
-        />
+        <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
       )}
 
-      {/* Tap zonas */}
       <div className="absolute inset-0 flex">
         <div className="flex-1" onClick={() => setIdx((i) => Math.max(0, i - 1))} />
         <div className="flex-1" onClick={() => {
@@ -127,8 +102,6 @@ function VisorStory({
     </div>
   );
 }
-
-// ─── Stories principal ────────────────────────────────────────────────────────
 
 export default function Stories() {
   const user = auth.currentUser;
@@ -150,10 +123,9 @@ export default function Stories() {
       where('createdAt', '>=', corte),
       orderBy('createdAt', 'desc')
     );
-    const unsub = onSnapshot(q, (snap) =>
+    return onSnapshot(q, (snap) =>
       setStories(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Story)))
     );
-    return () => unsub();
   }, []);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -163,15 +135,13 @@ export default function Stories() {
     if (f.size > MAX_MB * 1024 * 1024) return;
     setSubiendo(true);
     try {
-      const sRef = storageRef(storage, `stories/${Date.now()}_${f.name}`);
-      await uploadBytes(sRef, f);
-      const mediaUrl = await getDownloadURL(sRef);
+      const { url: mediaUrl, tipo: mediaType } = await subirArchivoCloudinary(f);
       await addDoc(collection(db, 'stories'), {
         userId:    user.uid,
         userName:  user.displayName ?? 'Usuario',
         userPhoto: user.photoURL    ?? '',
         mediaUrl,
-        mediaType: f.type.startsWith('video') ? 'video' : 'image',
+        mediaType,
         createdAt: serverTimestamp(),
       });
     } catch (e) { console.error('[Stories] upload error:', e); }
@@ -186,7 +156,6 @@ export default function Stories() {
     try { localStorage.setItem('ag_stories_vistos', JSON.stringify([...nuevos])); } catch {}
   }
 
-  // Agrupar por usuario
   const grupos = Object.values(
     stories.reduce<Record<string, StoryGroup>>((acc, s) => {
       if (!acc[s.userId]) {
@@ -205,8 +174,6 @@ export default function Stories() {
   return (
     <>
       <div className="flex gap-3 overflow-x-auto pb-2 px-1 scrollbar-none">
-
-        {/* Mi story */}
         <div className="flex flex-col items-center gap-1 shrink-0">
           <label className={`relative w-16 h-16 rounded-full cursor-pointer ${subiendo ? 'opacity-60' : ''}`}>
             <img
@@ -227,7 +194,6 @@ export default function Stories() {
           <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold">Tu historia</span>
         </div>
 
-        {/* Historias de otros */}
         {grupos.filter((g) => g.userId !== user?.uid).map((g) => (
           <div
             key={g.userId}
@@ -238,9 +204,7 @@ export default function Stories() {
               src={g.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(g.userName)}&background=7c3aed&color=fff`}
               alt={g.userName}
               className={`w-16 h-16 rounded-full object-cover ring-2 ring-offset-2 ${
-                g.visto
-                  ? 'ring-gray-300 dark:ring-gray-600'
-                  : 'ring-purple-500'
+                g.visto ? 'ring-gray-300 dark:ring-gray-600' : 'ring-purple-500'
               }`}
             />
             <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold max-w-[64px] truncate">
@@ -250,10 +214,9 @@ export default function Stories() {
         ))}
       </div>
 
-      {/* Visor */}
       {viendoGrupo && (
         <VisorStory grupo={viendoGrupo} onClose={() => setViendoGrupo(null)} />
       )}
     </>
   );
-}
+      }
