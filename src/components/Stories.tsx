@@ -29,9 +29,10 @@ interface StoryGroup {
   visto:     boolean;
 }
 
-const MAX_MB          = 50;
-const STORY_EXPIRE_MS = 12 * 60 * 60 * 1000;
+const MAX_MB             = 50;
+const STORY_EXPIRE_MS    = 12 * 60 * 60 * 1000;
 const REACCIONES_RAPIDAS = ['❤️', '😂', '😍', '👏', '😲'];
+const HOLD_DELAY_MS      = 150;
 
 function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void }) {
   const user     = auth.currentUser;
@@ -44,26 +45,31 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   const [respuesta,     setRespuesta]     = useState('');
   const [enviando,      setEnviando]      = useState(false);
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdTimer   = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const isHolding   = useRef(false);
+  const progresoRef = useRef(0);
+  const startRef    = useRef(0);
+
   const story    = grupo.stories[idx];
   const esMia    = story?.userId === user?.uid;
   const DURACION = story?.mediaType === 'video' ? 15000 : 5000;
 
   useEffect(() => {
     if (user && story && !esMia && !story.vistos?.includes(user.uid)) {
-      updateDoc(doc(db, 'stories', story.id), {
-        vistos: arrayUnion(user.uid),
-      }).catch(() => {});
+      updateDoc(doc(db, 'stories', story.id), { vistos: arrayUnion(user.uid) }).catch(() => {});
     }
   }, [story?.id]);
 
-  useEffect(() => {
-    if (pausado) return;
-    setProgreso(0);
-    const start = Date.now();
+  function iniciarTimer(desde: number = 0) {
+    if (timerRef.current) clearInterval(timerRef.current);
+    progresoRef.current = desde;
+    startRef.current    = Date.now() - (desde / 100) * DURACION;
+
     timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - start;
+      const elapsed = Date.now() - startRef.current;
       const p = Math.min((elapsed / DURACION) * 100, 100);
+      progresoRef.current = p;
       setProgreso(p);
       if (p >= 100) {
         clearInterval(timerRef.current!);
@@ -71,24 +77,66 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         else onClose();
       }
     }, 50);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }
+
+  function detenerTimer() {
+    if (timerRef.current) clearInterval(timerRef.current);
+  }
+
+  useEffect(() => {
+    if (pausado) {
+      detenerTimer();
+    } else {
+      iniciarTimer(progresoRef.current);
+    }
+    return () => detenerTimer();
   }, [idx, pausado]);
 
   useEffect(() => {
     if (mostrarVistos || respuesta) {
       setPausado(true);
-      if (timerRef.current) clearInterval(timerRef.current);
     } else {
       setPausado(false);
     }
   }, [mostrarVistos, respuesta]);
 
+  // Touch handlers para hold (pausar) y tap (saltar/retroceder)
+  function onTouchStart(side: 'left' | 'right') {
+    isHolding.current = false;
+    holdTimer.current = setTimeout(() => {
+      isHolding.current = true;
+      setPausado(true);
+    }, HOLD_DELAY_MS);
+  }
+
+  function onTouchEnd(side: 'left' | 'right') {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    if (isHolding.current) {
+      // Soltó después de hold — reanudar
+      setPausado(false);
+      isHolding.current = false;
+      return;
+    }
+    // Fue un tap rápido — saltar
+    if (side === 'left') {
+      if (idx > 0) {
+        progresoRef.current = 0;
+        setIdx((i) => i - 1);
+      }
+    } else {
+      if (idx < grupo.stories.length - 1) {
+        progresoRef.current = 0;
+        setIdx((i) => i + 1);
+      } else {
+        onClose();
+      }
+    }
+  }
+
   async function handleReaccion(emoji: string) {
     if (!user || !story) return;
     try {
-      await updateDoc(doc(db, 'stories', story.id), {
-        [`reacciones.${user.uid}`]: emoji,
-      });
+      await updateDoc(doc(db, 'stories', story.id), { [`reacciones.${user.uid}`]: emoji });
       await addDoc(collection(db, 'notifications'), {
         uid: story.userId, titulo: `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu historia`,
         mensaje: emoji, tipo: 'reaccion', leida: false, creadoEn: serverTimestamp(),
@@ -114,8 +162,8 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         await setDoc(chatRef, {
           participants: [user.uid, story.userId].sort(),
           participantData: {
-            [user.uid]:     { name: meData.name    || user.displayName || 'Yo',      photo: meData.photo    || user.photoURL    || '' },
-            [story.userId]: { name: otherData.name || story.userName   || 'Usuario', photo: otherData.photo || story.userPhoto  || '' },
+            [user.uid]:     { name: meData.name    || user.displayName || 'Yo',      photo: meData.photo    || user.photoURL   || '' },
+            [story.userId]: { name: otherData.name || story.userName   || 'Usuario', photo: otherData.photo || story.userPhoto || '' },
           },
           lastMessage: msg, lastMessageAt: serverTimestamp(), unreadBy: [story.userId],
         });
@@ -141,7 +189,8 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   const totalVistos = story.vistos?.length ?? 0;
 
   return (
-    <div className="fixed inset-0 z-[300] bg-black flex flex-col">
+    <div className="fixed inset-0 z-[300] bg-black flex flex-col select-none">
+      {/* Barras progreso */}
       <div className="absolute top-4 left-3 right-3 flex gap-1 z-10">
         {grupo.stories.map((_, i) => (
           <div key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
@@ -151,6 +200,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         ))}
       </div>
 
+      {/* Header */}
       <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
           <img
@@ -178,19 +228,31 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       </div>
 
+      {/* Media */}
       {story.mediaType === 'video'
         ? <video src={story.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover" />
         : <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
       }
 
-      <div className="absolute inset-0 flex" style={{ bottom: '120px' }}>
-        <div className="flex-1" onClick={() => setIdx((i) => Math.max(0, i - 1))} />
-        <div className="flex-1" onClick={() => {
-          if (idx < grupo.stories.length - 1) setIdx((i) => i + 1);
-          else onClose();
-        }} />
+      {/* Zonas tap/hold — izquierda y derecha */}
+      <div className="absolute inset-0 flex z-10" style={{ bottom: esMia ? '0' : '120px' }}>
+        <div
+          className="flex-1 h-full"
+          onTouchStart={() => onTouchStart('left')}
+          onTouchEnd={() => onTouchEnd('left')}
+          onMouseDown={() => onTouchStart('left')}
+          onMouseUp={() => onTouchEnd('left')}
+        />
+        <div
+          className="flex-1 h-full"
+          onTouchStart={() => onTouchStart('right')}
+          onTouchEnd={() => onTouchEnd('right')}
+          onMouseDown={() => onTouchStart('right')}
+          onMouseUp={() => onTouchEnd('right')}
+        />
       </div>
 
+      {/* Bottom: reacciones + respuesta */}
       {!esMia && (
         <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8 space-y-3">
           <div className="flex justify-center gap-3">
@@ -222,6 +284,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       )}
 
+      {/* Modal vistos */}
       {mostrarVistos && esMia && (
         <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
           onClick={(e) => e.target === e.currentTarget && setMostrarVistos(false)}>
@@ -333,11 +396,8 @@ export default function Stories() {
   return (
     <>
       <div className="flex gap-3 overflow-x-auto pb-2 px-1 scrollbar-none">
-
-        {/* Mi story */}
         <div className="flex flex-col items-center gap-1 shrink-0">
           <div className="relative w-16 h-16">
-            {/* Foto — si tiene historia abre visor, si no abre input */}
             <button
               className="w-16 h-16 rounded-full overflow-hidden focus:outline-none"
               onClick={() => miStory ? abrirGrupo(miStory) : inputRef.current?.click()}
@@ -350,8 +410,6 @@ export default function Stories() {
                 }`}
               />
             </button>
-
-            {/* Botón + siempre permite publicar nueva */}
             <label
               className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center ring-2 ring-white dark:ring-gray-900 cursor-pointer"
               onClick={(e) => e.stopPropagation()}
@@ -366,7 +424,6 @@ export default function Stories() {
           <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold">Tu historia</span>
         </div>
 
-        {/* Historias de otros */}
         {grupos.filter((g) => g.userId !== user?.uid).map((g) => (
           <div key={g.userId} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer" onClick={() => abrirGrupo(g)}>
             <img
@@ -388,4 +445,4 @@ export default function Stories() {
       )}
     </>
   );
-        }
+                   }
