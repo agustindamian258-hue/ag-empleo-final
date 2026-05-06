@@ -2,20 +2,23 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, auth } from '../app/firebase';
 import {
-  collection, addDoc, query, orderBy,
-  onSnapshot, serverTimestamp, where,
+  collection, addDoc, query, orderBy, onSnapshot,
+  serverTimestamp, where, doc, updateDoc, arrayUnion, getDoc, setDoc,
 } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
 import { subirArchivoCloudinary } from '../utils/cloudinary';
-import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, XMarkIcon, PaperAirplaneIcon, EyeIcon } from '@heroicons/react/24/outline';
 
 interface Story {
-  id:        string;
-  userId:    string;
-  userName:  string;
-  userPhoto: string;
-  mediaUrl:  string;
-  mediaType: 'image' | 'video';
-  createdAt: { toDate: () => Date } | null;
+  id:         string;
+  userId:     string;
+  userName:   string;
+  userPhoto:  string;
+  mediaUrl:   string;
+  mediaType:  'image' | 'video';
+  createdAt:  { toDate: () => Date } | null;
+  vistos:     string[];
+  reacciones: Record<string, string>;
 }
 
 interface StoryGroup {
@@ -27,16 +30,35 @@ interface StoryGroup {
 }
 
 const MAX_MB          = 50;
-const STORY_EXPIRE_MS = 12 * 60 * 60 * 1000; // 12hs
+const STORY_EXPIRE_MS = 12 * 60 * 60 * 1000;
+const REACCIONES_RAPIDAS = ['❤️', '😂', '😍', '👏', '😲'];
 
 function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void }) {
-  const [idx,      setIdx]      = useState(0);
-  const [progreso, setProgreso] = useState(0);
+  const user     = auth.currentUser;
+  const navigate = useNavigate();
+
+  const [idx,           setIdx]           = useState(0);
+  const [progreso,      setProgreso]      = useState(0);
+  const [pausado,       setPausado]       = useState(false);
+  const [mostrarVistos, setMostrarVistos] = useState(false);
+  const [respuesta,     setRespuesta]     = useState('');
+  const [enviando,      setEnviando]      = useState(false);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const story    = grupo.stories[idx];
+  const esMia    = story?.userId === user?.uid;
   const DURACION = story?.mediaType === 'video' ? 15000 : 5000;
 
   useEffect(() => {
+    if (user && story && !esMia && !story.vistos?.includes(user.uid)) {
+      updateDoc(doc(db, 'stories', story.id), {
+        vistos: arrayUnion(user.uid),
+      }).catch(() => {});
+    }
+  }, [story?.id]);
+
+  useEffect(() => {
+    if (pausado) return;
     setProgreso(0);
     const start = Date.now();
     timerRef.current = setInterval(() => {
@@ -50,19 +72,81 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
       }
     }, 50);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [idx]);
+  }, [idx, pausado]);
+
+  useEffect(() => {
+    if (mostrarVistos || respuesta) {
+      setPausado(true);
+      if (timerRef.current) clearInterval(timerRef.current);
+    } else {
+      setPausado(false);
+    }
+  }, [mostrarVistos, respuesta]);
+
+  async function handleReaccion(emoji: string) {
+    if (!user || !story) return;
+    try {
+      await updateDoc(doc(db, 'stories', story.id), {
+        [`reacciones.${user.uid}`]: emoji,
+      });
+      await addDoc(collection(db, 'notifications'), {
+        uid: story.userId, titulo: `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu historia`,
+        mensaje: emoji, tipo: 'reaccion', leida: false, creadoEn: serverTimestamp(),
+      });
+    } catch (e) { console.error('[Stories] reacción:', e); }
+  }
+
+  async function handleResponder() {
+    if (!user || !respuesta.trim() || !story) return;
+    setEnviando(true);
+    try {
+      const chatId   = [user.uid, story.userId].sort().join('_');
+      const chatRef  = doc(db, 'chats', chatId);
+      const chatSnap = await getDoc(chatRef);
+      const msg      = `↩️ Historia: "${respuesta.trim()}"`;
+      if (!chatSnap.exists()) {
+        const [meSnap, otherSnap] = await Promise.all([
+          getDoc(doc(db, 'users', user.uid)),
+          getDoc(doc(db, 'users', story.userId)),
+        ]);
+        const meData    = meSnap.exists()    ? meSnap.data()    : {};
+        const otherData = otherSnap.exists() ? otherSnap.data() : {};
+        await setDoc(chatRef, {
+          participants: [user.uid, story.userId].sort(),
+          participantData: {
+            [user.uid]:     { name: meData.name    || user.displayName || 'Yo',      photo: meData.photo    || user.photoURL    || '' },
+            [story.userId]: { name: otherData.name || story.userName   || 'Usuario', photo: otherData.photo || story.userPhoto  || '' },
+          },
+          lastMessage: msg, lastMessageAt: serverTimestamp(), unreadBy: [story.userId],
+        });
+      } else {
+        await updateDoc(chatRef, { lastMessage: msg, lastMessageAt: serverTimestamp(), unreadBy: [story.userId] });
+      }
+      await addDoc(collection(db, 'chats', chatId, 'messages'), {
+        senderId: user.uid, text: msg, createdAt: serverTimestamp(),
+      });
+      await addDoc(collection(db, 'notifications'), {
+        uid: story.userId, titulo: `💬 ${user.displayName ?? 'Alguien'} respondió tu historia`,
+        mensaje: respuesta.trim().slice(0, 80), tipo: 'mensaje', leida: false, creadoEn: serverTimestamp(),
+      });
+      setRespuesta('');
+      navigate(`/chat/${chatId}`);
+    } catch (e) { console.error('[Stories] responder:', e); }
+    finally { setEnviando(false); }
+  }
 
   if (!story) return null;
 
+  const miReaccion  = story.reacciones?.[user?.uid ?? ''];
+  const totalVistos = story.vistos?.length ?? 0;
+
   return (
-    <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center">
+    <div className="fixed inset-0 z-[300] bg-black flex flex-col">
       <div className="absolute top-4 left-3 right-3 flex gap-1 z-10">
         {grupo.stories.map((_, i) => (
           <div key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-white rounded-full transition-none"
-              style={{ width: `${i < idx ? 100 : i === idx ? progreso : 0}%` }}
-            />
+            <div className="h-full bg-white rounded-full transition-none"
+              style={{ width: `${i < idx ? 100 : i === idx ? progreso : 0}%` }} />
           </div>
         ))}
       </div>
@@ -71,8 +155,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         <div className="flex items-center gap-2">
           <img
             src={grupo.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(grupo.userName)}&background=7c3aed&color=fff`}
-            alt={grupo.userName}
-            className="w-9 h-9 rounded-full object-cover ring-2 ring-white"
+            alt={grupo.userName} className="w-9 h-9 rounded-full object-cover ring-2 ring-white"
           />
           <div>
             <p className="text-white font-black text-sm drop-shadow">{grupo.userName}</p>
@@ -81,24 +164,96 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
             </p>
           </div>
         </div>
-        <button onClick={onClose} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
-          <XMarkIcon className="w-5 h-5 text-white" />
-        </button>
+        <div className="flex items-center gap-2">
+          {esMia && (
+            <button onClick={() => setMostrarVistos(true)}
+              className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1">
+              <EyeIcon className="w-4 h-4 text-white" />
+              <span className="text-white text-xs font-bold">{totalVistos}</span>
+            </button>
+          )}
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+            <XMarkIcon className="w-5 h-5 text-white" />
+          </button>
+        </div>
       </div>
 
-      {story.mediaType === 'video' ? (
-        <video src={story.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover" />
-      ) : (
-        <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
-      )}
+      {story.mediaType === 'video'
+        ? <video src={story.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover" />
+        : <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
+      }
 
-      <div className="absolute inset-0 flex">
+      <div className="absolute inset-0 flex" style={{ bottom: '120px' }}>
         <div className="flex-1" onClick={() => setIdx((i) => Math.max(0, i - 1))} />
         <div className="flex-1" onClick={() => {
           if (idx < grupo.stories.length - 1) setIdx((i) => i + 1);
           else onClose();
         }} />
       </div>
+
+      {!esMia && (
+        <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8 space-y-3">
+          <div className="flex justify-center gap-3">
+            {REACCIONES_RAPIDAS.map((emoji) => (
+              <button key={emoji} onClick={() => handleReaccion(emoji)}
+                className={`text-2xl transition-transform active:scale-125 ${miReaccion === emoji ? 'scale-125' : ''}`}>
+                {emoji}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 items-center">
+            <input
+              value={respuesta}
+              onChange={(e) => setRespuesta(e.target.value)}
+              onFocus={() => setPausado(true)}
+              onBlur={() => { if (!respuesta) setPausado(false); }}
+              onKeyDown={(e) => e.key === 'Enter' && handleResponder()}
+              placeholder="Responder historia..."
+              maxLength={200}
+              className="flex-1 bg-white/20 backdrop-blur rounded-full px-4 py-2.5 text-white placeholder-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
+            />
+            {respuesta.trim() && (
+              <button onClick={handleResponder} disabled={enviando}
+                className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50">
+                <PaperAirplaneIcon className="w-5 h-5 text-white" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mostrarVistos && esMia && (
+        <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
+          onClick={(e) => e.target === e.currentTarget && setMostrarVistos(false)}>
+          <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-3 overflow-y-auto" style={{ maxHeight: '60vh' }}>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-black text-white flex items-center gap-2">
+                <EyeIcon className="w-5 h-5" /> Visto por {totalVistos}
+              </h3>
+              <button onClick={() => setMostrarVistos(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
+                <XMarkIcon className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            {Object.entries(story.reacciones || {}).length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Reacciones</p>
+                {Object.entries(story.reacciones || {}).map(([uid, emoji]) => (
+                  <div key={uid} className="flex items-center justify-between py-2 border-b border-gray-800">
+                    <span className="text-gray-300 text-sm">{uid === user?.uid ? 'Vos' : uid.slice(0, 8) + '...'}</span>
+                    <span className="text-2xl">{emoji}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {totalVistos === 0 && (
+              <div className="text-center py-8 text-gray-600">
+                <p className="text-3xl mb-2">👁️</p>
+                <p className="text-sm font-bold">Nadie vio esta historia aún</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -115,6 +270,8 @@ export default function Stories() {
       return raw ? new Set(JSON.parse(raw)) : new Set();
     } catch { return new Set(); }
   });
+
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const corte = new Date(Date.now() - STORY_EXPIRE_MS);
@@ -137,12 +294,14 @@ export default function Stories() {
     try {
       const { url: mediaUrl, tipo: mediaType } = await subirArchivoCloudinary(f);
       await addDoc(collection(db, 'stories'), {
-        userId:    user.uid,
-        userName:  user.displayName ?? 'Usuario',
-        userPhoto: user.photoURL    ?? '',
+        userId:     user.uid,
+        userName:   user.displayName ?? 'Usuario',
+        userPhoto:  user.photoURL    ?? '',
         mediaUrl,
         mediaType,
-        createdAt: serverTimestamp(),
+        vistos:     [],
+        reacciones: {},
+        createdAt:  serverTimestamp(),
       });
     } catch (e) { console.error('[Stories] upload error:', e); }
     finally { setSubiendo(false); }
@@ -174,32 +333,42 @@ export default function Stories() {
   return (
     <>
       <div className="flex gap-3 overflow-x-auto pb-2 px-1 scrollbar-none">
+
+        {/* Mi story */}
         <div className="flex flex-col items-center gap-1 shrink-0">
-          <label className={`relative w-16 h-16 rounded-full cursor-pointer ${subiendo ? 'opacity-60' : ''}`}>
-            <img
-              src={user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'U')}&background=7c3aed&color=fff`}
-              alt="Mi story"
-              className={`w-16 h-16 rounded-full object-cover ${
-                miStory ? 'ring-2 ring-purple-500 ring-offset-2' : 'ring-2 ring-gray-200 dark:ring-gray-700 ring-offset-2'
-              }`}
-            />
-            <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center ring-2 ring-white dark:ring-gray-900">
+          <div className="relative w-16 h-16">
+            {/* Foto — si tiene historia abre visor, si no abre input */}
+            <button
+              className="w-16 h-16 rounded-full overflow-hidden focus:outline-none"
+              onClick={() => miStory ? abrirGrupo(miStory) : inputRef.current?.click()}
+            >
+              <img
+                src={user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'U')}&background=7c3aed&color=fff`}
+                alt="Mi story"
+                className={`w-16 h-16 rounded-full object-cover ${
+                  miStory ? 'ring-2 ring-purple-500 ring-offset-2' : 'ring-2 ring-gray-200 dark:ring-gray-700 ring-offset-2'
+                }`}
+              />
+            </button>
+
+            {/* Botón + siempre permite publicar nueva */}
+            <label
+              className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center ring-2 ring-white dark:ring-gray-900 cursor-pointer"
+              onClick={(e) => e.stopPropagation()}
+            >
               {subiendo
                 ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 : <PlusIcon className="w-3 h-3 text-white" strokeWidth={3} />
               }
-            </div>
-            <input type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" disabled={subiendo} />
-          </label>
+              <input ref={inputRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" disabled={subiendo} />
+            </label>
+          </div>
           <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold">Tu historia</span>
         </div>
 
+        {/* Historias de otros */}
         {grupos.filter((g) => g.userId !== user?.uid).map((g) => (
-          <div
-            key={g.userId}
-            className="flex flex-col items-center gap-1 shrink-0 cursor-pointer"
-            onClick={() => abrirGrupo(g)}
-          >
+          <div key={g.userId} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer" onClick={() => abrirGrupo(g)}>
             <img
               src={g.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(g.userName)}&background=7c3aed&color=fff`}
               alt={g.userName}
@@ -219,4 +388,4 @@ export default function Stories() {
       )}
     </>
   );
-      }
+        }
