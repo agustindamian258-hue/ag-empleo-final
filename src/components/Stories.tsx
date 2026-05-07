@@ -22,6 +22,8 @@ interface Story {
   createdAt:  { toDate: () => Date } | null;
   vistos:     string[];
   reacciones: Record<string, string>;
+  textos?:    TextoOverlay[];
+  stickers?:  StickerOverlay[];
 }
 
 interface StoryGroup {
@@ -41,6 +43,13 @@ interface TextoOverlay {
   size:  number;
 }
 
+interface StickerOverlay {
+  id:    string;
+  emoji: string;
+  x:     number;
+  y:     number;
+}
+
 const MAX_MB             = 50;
 const STORY_EXPIRE_MS    = 12 * 60 * 60 * 1000;
 const REACCIONES_RAPIDAS = ['❤️', '😂', '😍', '👏', '😲'];
@@ -48,34 +57,28 @@ const HOLD_DELAY_MS      = 150;
 const COLORES_TEXTO      = ['#ffffff', '#000000', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de'];
 const STICKERS           = ['🔥', '💯', '⭐', '🎉', '👀', '💪', '🙌', '✨', '💥', '🏆', '❤️', '😎', '🤙', '🎯', '💼', '🌟'];
 
-// ─── Editor de historia ───────────────────────────────────────────────────────
-function EditorStory({
-  file,
-  onPublicar,
-  onCancelar,
-}: {
+function EditorStory({ file, onPublicar, onCancelar }: {
   file:       File;
-  onPublicar: (overlays: TextoOverlay[], stickers: { emoji: string; x: number; y: number }[]) => void;
+  onPublicar: (textos: TextoOverlay[], stickers: StickerOverlay[]) => Promise<void>;
   onCancelar: () => void;
 }) {
-  const previewUrl = useRef(URL.createObjectURL(file));
-  const esVideo    = file.type.startsWith('video/');
-
+  const esVideo = file.type.startsWith('video/');
+  const [previewUrl,   setPreviewUrl]   = useState('');
   const [textos,       setTextos]       = useState<TextoOverlay[]>([]);
-  const [stickers,     setStickers]     = useState<{ id: string; emoji: string; x: number; y: number }[]>([]);
+  const [stickers,     setStickers]     = useState<StickerOverlay[]>([]);
   const [modoTexto,    setModoTexto]    = useState(false);
   const [modoSticker,  setModoSticker]  = useState(false);
   const [textoActual,  setTextoActual]  = useState('');
   const [colorTexto,   setColorTexto]   = useState('#ffffff');
   const [sizeTexto,    setSizeTexto]    = useState(24);
   const [subiendo,     setSubiendo]     = useState(false);
-
-  const canvasRef    = useRef<HTMLDivElement>(null);
-  const inputTextoRef = useRef<HTMLInputElement>(null);
+  const inputTextoRef  = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    return () => URL.revokeObjectURL(previewUrl.current);
-  }, []);
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   useEffect(() => {
     if (modoTexto) setTimeout(() => inputTextoRef.current?.focus(), 100);
@@ -84,96 +87,62 @@ function EditorStory({
   function agregarTexto() {
     if (!textoActual.trim()) { setModoTexto(false); return; }
     setTextos(prev => [...prev, {
-      id:     Date.now().toString(),
-      texto:  textoActual.trim(),
-      x:      30,
-      y:      40 + prev.length * 12,
-      color:  colorTexto,
-      size:   sizeTexto,
+      id: Date.now().toString(), texto: textoActual.trim(),
+      x: 30, y: 40 + prev.length * 12, color: colorTexto, size: sizeTexto,
     }]);
-    setTextoActual('');
-    setModoTexto(false);
+    setTextoActual(''); setModoTexto(false);
   }
 
   function agregarSticker(emoji: string) {
     setStickers(prev => [...prev, {
-      id:    Date.now().toString(),
-      emoji,
-      x:     20 + Math.random() * 60,
-      y:     20 + Math.random() * 60,
+      id: Date.now().toString(), emoji,
+      x: 20 + Math.random() * 60, y: 20 + Math.random() * 60,
     }]);
     setModoSticker(false);
   }
 
-  function eliminarTexto(id: string) {
-    setTextos(prev => prev.filter(t => t.id !== id));
-  }
-
-  function eliminarSticker(id: string) {
-    setStickers(prev => prev.filter(s => s.id !== id));
-  }
-
   async function handlePublicar() {
     setSubiendo(true);
-    try {
-      onPublicar(textos, stickers);
-    } finally {
-      setSubiendo(false);
-    }
+    try { await onPublicar(textos, stickers); }
+    finally { setSubiendo(false); }
   }
+
+  if (!previewUrl) return null;
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
-      {/* Preview con overlays */}
-      <div ref={canvasRef} className="relative flex-1 overflow-hidden">
+      <div className="relative flex-1 overflow-hidden">
         {esVideo
-          ? <video src={previewUrl.current} autoPlay muted loop playsInline className="w-full h-full object-cover" />
-          : <img src={previewUrl.current} alt="preview" className="w-full h-full object-cover" />
+          ? <video src={previewUrl} autoPlay muted loop playsInline className="w-full h-full object-cover" />
+          : <img src={previewUrl} alt="preview" className="w-full h-full object-cover" />
         }
-
-        {/* Textos */}
         {textos.map((t) => (
-          <div key={t.id}
-            className="absolute cursor-pointer active:scale-95 transition-transform"
+          <div key={t.id} className="absolute cursor-pointer active:scale-95 transition-transform"
             style={{ left: `${t.x}%`, top: `${t.y}%`, color: t.color, fontSize: t.size, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)', maxWidth: '80%' }}
-            onDoubleClick={() => eliminarTexto(t.id)}
-          >
+            onDoubleClick={() => setTextos(p => p.filter(x => x.id !== t.id))}>
             {t.texto}
           </div>
         ))}
-
-        {/* Stickers */}
         {stickers.map((s) => (
-          <div key={s.id}
-            className="absolute cursor-pointer text-4xl active:scale-95 transition-transform"
+          <div key={s.id} className="absolute cursor-pointer text-4xl active:scale-95 transition-transform"
             style={{ left: `${s.x}%`, top: `${s.y}%` }}
-            onDoubleClick={() => eliminarSticker(s.id)}
-          >
+            onDoubleClick={() => setStickers(p => p.filter(x => x.id !== s.id))}>
             {s.emoji}
           </div>
         ))}
-
-        {/* Hint doble tap */}
         {(textos.length > 0 || stickers.length > 0) && (
-          <p className="absolute bottom-4 left-0 right-0 text-center text-white/50 text-xs">
-            Doble tap para eliminar
-          </p>
+          <p className="absolute bottom-4 left-0 right-0 text-center text-white/50 text-xs">Doble tap para eliminar</p>
         )}
       </div>
 
-      {/* Toolbar */}
       {!modoTexto && !modoSticker && (
         <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20">
           <button onClick={onCancelar} className="w-9 h-9 rounded-full bg-black/50 flex items-center justify-center">
             <XMarkIcon className="w-5 h-5 text-white" />
           </button>
           <div className="flex gap-2">
-            <button onClick={() => setModoTexto(true)}
-              className="px-3 py-1.5 rounded-full bg-black/50 text-white text-sm font-black active:scale-95">
-              Aa
-            </button>
-            <button onClick={() => setModoSticker(true)}
-              className="w-9 h-9 rounded-full bg-black/50 flex items-center justify-center">
+            <button onClick={() => setModoTexto(true)} className="px-3 py-1.5 rounded-full bg-black/50 text-white text-sm font-black active:scale-95">Aa</button>
+            <button onClick={() => setModoSticker(true)} className="w-9 h-9 rounded-full bg-black/50 flex items-center justify-center">
               <FaceSmileIcon className="w-5 h-5 text-white" />
             </button>
           </div>
@@ -185,20 +154,13 @@ function EditorStory({
         </div>
       )}
 
-      {/* Panel texto */}
       {modoTexto && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/40">
-          <input
-            ref={inputTextoRef}
-            value={textoActual}
-            onChange={(e) => setTextoActual(e.target.value)}
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/50">
+          <input ref={inputTextoRef} value={textoActual} onChange={(e) => setTextoActual(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && agregarTexto()}
-            placeholder="Escribí algo..."
-            maxLength={80}
+            placeholder="Escribí algo..." maxLength={80}
             className="bg-transparent text-center focus:outline-none w-4/5"
-            style={{ color: colorTexto, fontSize: sizeTexto, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}
-          />
-          {/* Colores */}
+            style={{ color: colorTexto, fontSize: sizeTexto, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }} />
           <div className="flex gap-2 mt-6">
             {COLORES_TEXTO.map((c) => (
               <button key={c} onClick={() => setColorTexto(c)}
@@ -206,24 +168,17 @@ function EditorStory({
                 style={{ background: c }} />
             ))}
           </div>
-          {/* Tamaño */}
           <input type="range" min={16} max={48} value={sizeTexto}
             onChange={(e) => setSizeTexto(Number(e.target.value))}
             className="w-48 mt-4 accent-purple-500" />
           <div className="flex gap-3 mt-4">
             <button onClick={() => { setModoTexto(false); setTextoActual(''); }}
-              className="px-4 py-2 rounded-full bg-white/20 text-white text-sm font-bold">
-              Cancelar
-            </button>
-            <button onClick={agregarTexto}
-              className="px-4 py-2 rounded-full bg-purple-600 text-white text-sm font-black">
-              Agregar
-            </button>
+              className="px-4 py-2 rounded-full bg-white/20 text-white text-sm font-bold">Cancelar</button>
+            <button onClick={agregarTexto} className="px-4 py-2 rounded-full bg-purple-600 text-white text-sm font-black">Agregar</button>
           </div>
         </div>
       )}
 
-      {/* Panel stickers */}
       {modoSticker && (
         <div className="absolute bottom-0 left-0 right-0 z-30 bg-gray-900 rounded-t-3xl px-4 pt-4 pb-8">
           <div className="flex items-center justify-between mb-3">
@@ -235,17 +190,15 @@ function EditorStory({
           <div className="grid grid-cols-8 gap-2">
             {STICKERS.map((emoji) => (
               <button key={emoji} onClick={() => agregarSticker(emoji)}
-                className="text-3xl active:scale-125 transition-transform text-center">
-                {emoji}
-              </button>
+                className="text-3xl active:scale-125 transition-transform text-center">{emoji}</button>
             ))}
           </div>
         </div>
       )}
     </div>
   );
-          }
-// ─── Visor de story ───────────────────────────────────────────────────────────
+}
+
 function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void }) {
   const user     = auth.currentUser;
   const navigate = useNavigate();
@@ -378,8 +331,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         uid: story.userId, titulo: `💬 ${user.displayName ?? 'Alguien'} respondió tu historia`,
         mensaje: respuesta.trim().slice(0, 80), tipo: 'mensaje', leida: false, creadoEn: serverTimestamp(),
       });
-      setRespuesta('');
-      navigate(`/chat/${chatId}`);
+      setRespuesta(''); navigate(`/chat/${chatId}`);
     } catch (e) { console.error('[Stories] responder:', e); }
     finally { setEnviando(false); }
   }
@@ -440,14 +392,13 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         : <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
       }
 
-      {/* Overlays de texto y stickers guardados */}
-      {(story as any).textos?.map((t: any) => (
+      {story.textos?.map((t) => (
         <div key={t.id} className="absolute pointer-events-none"
           style={{ left: `${t.x}%`, top: `${t.y}%`, color: t.color, fontSize: t.size, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
           {t.texto}
         </div>
       ))}
-      {(story as any).stickers?.map((s: any) => (
+      {story.stickers?.map((s) => (
         <div key={s.id} className="absolute pointer-events-none text-4xl"
           style={{ left: `${s.x}%`, top: `${s.y}%` }}>
           {s.emoji}
@@ -482,7 +433,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
               className="flex-1 bg-white/20 backdrop-blur rounded-full px-4 py-2.5 text-white placeholder-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-white/50" />
             {respuesta.trim() && (
               <button onClick={handleResponder} disabled={enviando}
-                className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50">
+                className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center active:scale-90 disabled:opacity-50">
                 <PaperAirplaneIcon className="w-5 h-5 text-white" />
               </button>
             )}
@@ -532,11 +483,11 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
               </button>
             </div>
             <button onClick={handleReportar}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-900/20 text-red-400 font-bold text-sm active:scale-95 transition-transform">
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-900/20 text-red-400 font-bold text-sm active:scale-95">
               <FlagIcon className="w-5 h-5" /> Reportar historia
             </button>
             <button onClick={() => setMostrarOpciones(false)}
-              className="w-full px-4 py-3 rounded-2xl bg-gray-800 text-gray-300 font-bold text-sm active:scale-95 transition-transform">
+              className="w-full px-4 py-3 rounded-2xl bg-gray-800 text-gray-300 font-bold text-sm active:scale-95">
               Cancelar
             </button>
           </div>
@@ -546,15 +497,14 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   );
 }
 
-// ─── Stories principal ────────────────────────────────────────────────────────
 export default function Stories() {
   const user = auth.currentUser;
 
-  const [stories,      setStories]      = useState<Story[]>([]);
-  const [viendoGrupo,  setViendoGrupo]  = useState<StoryGroup | null>(null);
-  const [archivoEdit,  setArchivoEdit]  = useState<File | null>(null);
-  const [subiendo,     setSubiendo]     = useState(false);
-  const [vistos,       setVistos]       = useState<Set<string>>(() => {
+  const [stories,     setStories]     = useState<Story[]>([]);
+  const [viendoGrupo, setViendoGrupo] = useState<StoryGroup | null>(null);
+  const [archivoEdit, setArchivoEdit] = useState<File | null>(null);
+  const [subiendo,    setSubiendo]    = useState(false);
+  const [vistos,      setVistos]      = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('ag_stories_vistos');
       return raw ? new Set(JSON.parse(raw)) : new Set();
@@ -581,14 +531,10 @@ export default function Stories() {
     if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) return;
     if (f.size > MAX_MB * 1024 * 1024) return;
     setArchivoEdit(f);
-    // reset input para poder seleccionar el mismo archivo de nuevo
     e.target.value = '';
   }
 
-  async function handlePublicar(
-    textos:   TextoOverlay[],
-    stickers: { id: string; emoji: string; x: number; y: number }[]
-  ) {
+  async function handlePublicar(textos: TextoOverlay[], stickers: StickerOverlay[]) {
     if (!archivoEdit || !user) return;
     setSubiendo(true);
     try {
@@ -597,13 +543,8 @@ export default function Stories() {
         userId:     user.uid,
         userName:   user.displayName ?? 'Usuario',
         userPhoto:  user.photoURL    ?? '',
-        mediaUrl,
-        mediaType,
-        textos,
-        stickers,
-        vistos:     [],
-        reacciones: {},
-        createdAt:  serverTimestamp(),
+        mediaUrl, mediaType, textos, stickers,
+        vistos: [], reacciones: {}, createdAt: serverTimestamp(),
       });
       setArchivoEdit(null);
     } catch (e) { console.error('[Stories] upload error:', e); }
@@ -621,10 +562,7 @@ export default function Stories() {
   const grupos = Object.values(
     stories.reduce<Record<string, StoryGroup>>((acc, s) => {
       if (!acc[s.userId]) {
-        acc[s.userId] = {
-          userId: s.userId, userName: s.userName,
-          userPhoto: s.userPhoto, stories: [], visto: vistos.has(s.userId),
-        };
+        acc[s.userId] = { userId: s.userId, userName: s.userName, userPhoto: s.userPhoto, stories: [], visto: vistos.has(s.userId) };
       }
       acc[s.userId].stories.push(s);
       return acc;
@@ -638,22 +576,16 @@ export default function Stories() {
       <div className="flex gap-3 overflow-x-auto pb-2 px-1 scrollbar-none">
         <div className="flex flex-col items-center gap-1 shrink-0">
           <div className="relative w-16 h-16">
-            <button
-              className="w-16 h-16 rounded-full overflow-hidden focus:outline-none"
-              onClick={() => miStory ? abrirGrupo(miStory) : inputRef.current?.click()}
-            >
+            <button className="w-16 h-16 rounded-full overflow-hidden focus:outline-none"
+              onClick={() => miStory ? abrirGrupo(miStory) : inputRef.current?.click()}>
               <img
                 src={user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'U')}&background=7c3aed&color=fff`}
                 alt="Mi story"
-                className={`w-16 h-16 rounded-full object-cover ${
-                  miStory ? 'ring-2 ring-purple-500 ring-offset-2' : 'ring-2 ring-gray-200 dark:ring-gray-700 ring-offset-2'
-                }`}
+                className={`w-16 h-16 rounded-full object-cover ${miStory ? 'ring-2 ring-purple-500 ring-offset-2' : 'ring-2 ring-gray-200 dark:ring-gray-700 ring-offset-2'}`}
               />
             </button>
-            <label
-              className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center ring-2 ring-white dark:ring-gray-900 cursor-pointer"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <label className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center ring-2 ring-white dark:ring-gray-900 cursor-pointer"
+              onClick={(e) => e.stopPropagation()}>
               {subiendo
                 ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 : <PlusIcon className="w-3 h-3 text-white" strokeWidth={3} />
@@ -669,9 +601,7 @@ export default function Stories() {
             <img
               src={g.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(g.userName)}&background=7c3aed&color=fff`}
               alt={g.userName}
-              className={`w-16 h-16 rounded-full object-cover ring-2 ring-offset-2 ${
-                g.visto ? 'ring-gray-300 dark:ring-gray-600' : 'ring-purple-500'
-              }`}
+              className={`w-16 h-16 rounded-full object-cover ring-2 ring-offset-2 ${g.visto ? 'ring-gray-300 dark:ring-gray-600' : 'ring-purple-500'}`}
             />
             <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold max-w-[64px] truncate">
               {g.userName.split(' ')[0]}
@@ -680,13 +610,8 @@ export default function Stories() {
         ))}
       </div>
 
-      {/* Editor antes de publicar */}
       {archivoEdit && (
-        <EditorStory
-          file={archivoEdit}
-          onPublicar={handlePublicar}
-          onCancelar={() => setArchivoEdit(null)}
-        />
+        <EditorStory file={archivoEdit} onPublicar={handlePublicar} onCancelar={() => setArchivoEdit(null)} />
       )}
 
       {viendoGrupo && (
@@ -694,4 +619,4 @@ export default function Stories() {
       )}
     </>
   );
-      }
+                }
