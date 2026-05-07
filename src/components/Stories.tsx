@@ -50,6 +50,10 @@ interface StickerOverlay {
   y:     number;
 }
 
+interface StoriesProps {
+  onVisorChange?: (activo: boolean) => void;
+}
+
 const MAX_MB             = 50;
 const STORY_EXPIRE_MS    = 12 * 60 * 60 * 1000;
 const REACCIONES_RAPIDAS = ['❤️', '😂', '😍', '👏', '😲'];
@@ -57,22 +61,26 @@ const HOLD_DELAY_MS      = 150;
 const COLORES_TEXTO      = ['#ffffff', '#000000', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de'];
 const STICKERS           = ['🔥', '💯', '⭐', '🎉', '👀', '💪', '🙌', '✨', '💥', '🏆', '❤️', '😎', '🤙', '🎯', '💼', '🌟'];
 
+// ─── Editor ──────────────────────────────────────────────────────────────────
 function EditorStory({ file, onPublicar, onCancelar }: {
   file:       File;
   onPublicar: (textos: TextoOverlay[], stickers: StickerOverlay[]) => Promise<void>;
   onCancelar: () => void;
 }) {
   const esVideo = file.type.startsWith('video/');
-  const [previewUrl,   setPreviewUrl]   = useState('');
-  const [textos,       setTextos]       = useState<TextoOverlay[]>([]);
-  const [stickers,     setStickers]     = useState<StickerOverlay[]>([]);
-  const [modoTexto,    setModoTexto]    = useState(false);
-  const [modoSticker,  setModoSticker]  = useState(false);
-  const [textoActual,  setTextoActual]  = useState('');
-  const [colorTexto,   setColorTexto]   = useState('#ffffff');
-  const [sizeTexto,    setSizeTexto]    = useState(24);
-  const [subiendo,     setSubiendo]     = useState(false);
-  const inputTextoRef  = useRef<HTMLInputElement>(null);
+  const [previewUrl,  setPreviewUrl]  = useState('');
+  const [textos,      setTextos]      = useState<TextoOverlay[]>([]);
+  const [stickers,    setStickers]    = useState<StickerOverlay[]>([]);
+  const [modoTexto,   setModoTexto]   = useState(false);
+  const [modoSticker, setModoSticker] = useState(false);
+  const [textoActual, setTextoActual] = useState('');
+  const [colorTexto,  setColorTexto]  = useState('#ffffff');
+  const [sizeTexto,   setSizeTexto]   = useState(24);
+  const [subiendo,    setSubiendo]    = useState(false);
+  const [draggingId,  setDraggingId]  = useState<string | null>(null);
+
+  const inputTextoRef = useRef<HTMLInputElement>(null);
+  const canvasRef     = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
@@ -88,7 +96,7 @@ function EditorStory({ file, onPublicar, onCancelar }: {
     if (!textoActual.trim()) { setModoTexto(false); return; }
     setTextos(prev => [...prev, {
       id: Date.now().toString(), texto: textoActual.trim(),
-      x: 30, y: 40 + prev.length * 12, color: colorTexto, size: sizeTexto,
+      x: 10, y: 40 + prev.length * 10, color: colorTexto, size: sizeTexto,
     }]);
     setTextoActual(''); setModoTexto(false);
   }
@@ -96,9 +104,46 @@ function EditorStory({ file, onPublicar, onCancelar }: {
   function agregarSticker(emoji: string) {
     setStickers(prev => [...prev, {
       id: Date.now().toString(), emoji,
-      x: 20 + Math.random() * 60, y: 20 + Math.random() * 60,
+      x: 35 + Math.random() * 30,
+      y: 30 + Math.random() * 30,
     }]);
     setModoSticker(false);
+  }
+
+  function handleStickerDragStart(e: React.TouchEvent, id: string) {
+    setDraggingId(id);
+    e.stopPropagation();
+  }
+
+  function handleStickerDragMove(e: React.TouchEvent) {
+    if (!draggingId || !canvasRef.current) return;
+    e.preventDefault();
+    const rect   = canvasRef.current.getBoundingClientRect();
+    const touch  = e.touches[0];
+    const x = ((touch.clientX - rect.left) / rect.width)  * 100;
+    const y = ((touch.clientY - rect.top)  / rect.height) * 100;
+    setStickers(prev => prev.map(s => s.id === draggingId
+      ? { ...s, x: Math.max(0, Math.min(90, x)), y: Math.max(0, Math.min(90, y)) }
+      : s
+    ));
+  }
+
+  function handleTextoTouchStart(e: React.TouchEvent, id: string) {
+    setDraggingId(id);
+    e.stopPropagation();
+  }
+
+  function handleTextoTouchMove(e: React.TouchEvent) {
+    if (!draggingId || !canvasRef.current) return;
+    e.preventDefault();
+    const rect  = canvasRef.current.getBoundingClientRect();
+    const touch = e.touches[0];
+    const x = ((touch.clientX - rect.left) / rect.width)  * 100;
+    const y = ((touch.clientY - rect.top)  / rect.height) * 100;
+    setTextos(prev => prev.map(t => t.id === draggingId
+      ? { ...t, x: Math.max(0, Math.min(85, x)), y: Math.max(0, Math.min(90, y)) }
+      : t
+    ));
   }
 
   async function handlePublicar() {
@@ -111,28 +156,63 @@ function EditorStory({ file, onPublicar, onCancelar }: {
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
-      <div className="relative flex-1 overflow-hidden">
+      <div
+        ref={canvasRef}
+        className="relative flex-1 overflow-hidden"
+        onTouchMove={(e) => {
+          if (draggingId) {
+            const isSt = stickers.some(s => s.id === draggingId);
+            if (isSt) handleStickerDragMove(e);
+            else handleTextoTouchMove(e);
+          }
+        }}
+        onTouchEnd={() => setDraggingId(null)}
+      >
         {esVideo
           ? <video src={previewUrl} autoPlay muted loop playsInline className="w-full h-full object-cover" />
           : <img src={previewUrl} alt="preview" className="w-full h-full object-cover" />
         }
+
         {textos.map((t) => (
-          <div key={t.id} className="absolute cursor-pointer active:scale-95 transition-transform"
-            style={{ left: `${t.x}%`, top: `${t.y}%`, color: t.color, fontSize: t.size, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)', maxWidth: '80%' }}
-            onDoubleClick={() => setTextos(p => p.filter(x => x.id !== t.id))}>
-            {t.texto}
+          <div
+            key={t.id}
+            className="absolute touch-none"
+            style={{
+              left: `${t.x}%`, top: `${t.y}%`,
+              color: t.color, fontSize: t.size, fontWeight: 900,
+              textShadow: '0 1px 4px rgba(0,0,0,0.8)', maxWidth: '80%',
+              cursor: 'grab', userSelect: 'none',
+            }}
+            onTouchStart={(e) => handleTextoTouchStart(e, t.id)}
+          >
+            <span>{t.texto}</span>
+            <button
+              className="ml-1 text-xs bg-black/50 rounded-full w-5 h-5 inline-flex items-center justify-center text-white"
+              onTouchStart={(e) => { e.stopPropagation(); setTextos(p => p.filter(x => x.id !== t.id)); }}
+              onClick={() => setTextos(p => p.filter(x => x.id !== t.id))}
+            >✕</button>
           </div>
         ))}
+
         {stickers.map((s) => (
-          <div key={s.id} className="absolute cursor-pointer text-4xl active:scale-95 transition-transform"
-            style={{ left: `${s.x}%`, top: `${s.y}%` }}
-            onDoubleClick={() => setStickers(p => p.filter(x => x.id !== s.id))}>
-            {s.emoji}
+          <div
+            key={s.id}
+            className="absolute touch-none"
+            style={{
+              left: `${s.x}%`, top: `${s.y}%`,
+              fontSize: 36, cursor: 'grab', userSelect: 'none',
+              transform: 'translate(-50%, -50%)',
+            }}
+            onTouchStart={(e) => handleStickerDragStart(e, s.id)}
+          >
+            <span>{s.emoji}</span>
+            <button
+              className="absolute -top-2 -right-2 text-[10px] bg-black/60 rounded-full w-4 h-4 flex items-center justify-center text-white"
+              onTouchStart={(e) => { e.stopPropagation(); setStickers(p => p.filter(x => x.id !== s.id)); }}
+              onClick={() => setStickers(p => p.filter(x => x.id !== s.id))}
+            >✕</button>
           </div>
         ))}
-        {(textos.length > 0 || stickers.length > 0) && (
-          <p className="absolute bottom-4 left-0 right-0 text-center text-white/50 text-xs">Doble tap para eliminar</p>
-        )}
       </div>
 
       {!modoTexto && !modoSticker && (
@@ -174,7 +254,8 @@ function EditorStory({ file, onPublicar, onCancelar }: {
           <div className="flex gap-3 mt-4">
             <button onClick={() => { setModoTexto(false); setTextoActual(''); }}
               className="px-4 py-2 rounded-full bg-white/20 text-white text-sm font-bold">Cancelar</button>
-            <button onClick={agregarTexto} className="px-4 py-2 rounded-full bg-purple-600 text-white text-sm font-black">Agregar</button>
+            <button onClick={agregarTexto}
+              className="px-4 py-2 rounded-full bg-purple-600 text-white text-sm font-black">Agregar</button>
           </div>
         </div>
       )}
@@ -199,6 +280,7 @@ function EditorStory({ file, onPublicar, onCancelar }: {
   );
 }
 
+// ─── Visor ────────────────────────────────────────────────────────────────────
 function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void }) {
   const user     = auth.currentUser;
   const navigate = useNavigate();
@@ -343,7 +425,8 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black flex flex-col select-none">
-      <div className="absolute top-4 left-3 right-3 flex gap-1 z-10">
+      {/* Barras progreso */}
+      <div className="absolute top-4 left-3 right-3 flex gap-1 z-10 pointer-events-none">
         {grupo.stories.map((_, i) => (
           <div key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
             <div className="h-full bg-white rounded-full transition-none"
@@ -352,7 +435,8 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         ))}
       </div>
 
-      <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-10">
+      {/* Header */}
+      <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-20">
         <div className="flex items-center gap-2">
           <img src={grupo.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(grupo.userName)}&background=7c3aed&color=fff`}
             alt={grupo.userName} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
@@ -366,32 +450,45 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         <div className="flex items-center gap-2">
           {esMia && (
             <>
-              <button onClick={() => setMostrarVistos(true)}
-                className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1">
+              <button
+                onTouchEnd={(e) => { e.stopPropagation(); setMostrarVistos(true); }}
+                onClick={() => setMostrarVistos(true)}
+                className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1 active:scale-95">
                 <EyeIcon className="w-4 h-4 text-white" />
                 <span className="text-white text-xs font-bold">{totalVistos}</span>
               </button>
-              <button onClick={handleEliminar} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+              <button
+                onTouchEnd={(e) => { e.stopPropagation(); handleEliminar(); }}
+                onClick={handleEliminar}
+                className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center active:scale-95">
                 <TrashIcon className="w-4 h-4 text-red-400" />
               </button>
             </>
           )}
           {!esMia && (
-            <button onClick={() => setMostrarOpciones(true)} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+            <button
+              onTouchEnd={(e) => { e.stopPropagation(); setMostrarOpciones(true); }}
+              onClick={() => setMostrarOpciones(true)}
+              className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center active:scale-95">
               <FlagIcon className="w-4 h-4 text-white" />
             </button>
           )}
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+          <button
+            onTouchEnd={(e) => { e.stopPropagation(); onClose(); }}
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center active:scale-95">
             <XMarkIcon className="w-5 h-5 text-white" />
           </button>
         </div>
       </div>
 
+      {/* Media */}
       {story.mediaType === 'video'
         ? <video src={story.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover" />
         : <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
       }
 
+      {/* Overlays guardados */}
       {story.textos?.map((t) => (
         <div key={t.id} className="absolute pointer-events-none"
           style={{ left: `${t.x}%`, top: `${t.y}%`, color: t.color, fontSize: t.size, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
@@ -399,26 +496,30 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       ))}
       {story.stickers?.map((s) => (
-        <div key={s.id} className="absolute pointer-events-none text-4xl"
-          style={{ left: `${s.x}%`, top: `${s.y}%` }}>
+        <div key={s.id} className="absolute pointer-events-none"
+          style={{ left: `${s.x}%`, top: `${s.y}%`, fontSize: 36, transform: 'translate(-50%, -50%)' }}>
           {s.emoji}
         </div>
       ))}
 
-      <div className="absolute inset-x-0 top-0 flex z-10" style={{ bottom: esMia ? '0' : '130px' }}>
-        <div className="flex-1 h-full"
-          onTouchStart={() => onTouchStart()} onTouchEnd={() => onTouchEnd('left')}
-          onMouseDown={() => onTouchStart()} onMouseUp={() => onTouchEnd('left')} />
-        <div className="flex-1 h-full"
-          onTouchStart={() => onTouchStart()} onTouchEnd={() => onTouchEnd('right')}
-          onMouseDown={() => onTouchStart()} onMouseUp={() => onTouchEnd('right')} />
-      </div>
+      {/* Zonas tap izquierda/derecha — debajo del header, encima de la media */}
+      <div className="absolute z-10" style={{ top: 80, left: 0, bottom: esMia ? 0 : 130, width: '40%' }}
+        onTouchStart={() => onTouchStart()}
+        onTouchEnd={() => onTouchEnd('left')}
+      />
+      <div className="absolute z-10" style={{ top: 80, right: 0, bottom: esMia ? 0 : 130, width: '40%' }}
+        onTouchStart={() => onTouchStart()}
+        onTouchEnd={() => onTouchEnd('right')}
+      />
 
+      {/* Bottom reacciones + respuesta */}
       {!esMia && (
         <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8 pt-4 space-y-3 bg-gradient-to-t from-black/60 to-transparent">
           <div className="flex justify-center gap-3">
             {REACCIONES_RAPIDAS.map((emoji) => (
-              <button key={emoji} onClick={() => handleReaccion(emoji)}
+              <button key={emoji}
+                onTouchEnd={(e) => { e.stopPropagation(); handleReaccion(emoji); }}
+                onClick={() => handleReaccion(emoji)}
                 className={`text-2xl transition-transform active:scale-125 ${miReaccion === emoji ? 'scale-125' : ''}`}>
                 {emoji}
               </button>
@@ -432,7 +533,8 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
               placeholder="Responder historia..." maxLength={200}
               className="flex-1 bg-white/20 backdrop-blur rounded-full px-4 py-2.5 text-white placeholder-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-white/50" />
             {respuesta.trim() && (
-              <button onClick={handleResponder} disabled={enviando}
+              <button onTouchEnd={(e) => { e.stopPropagation(); handleResponder(); }} onClick={handleResponder}
+                disabled={enviando}
                 className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center active:scale-90 disabled:opacity-50">
                 <PaperAirplaneIcon className="w-5 h-5 text-white" />
               </button>
@@ -441,13 +543,16 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       )}
 
+      {/* Modal vistos */}
       {mostrarVistos && esMia && (
         <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
+          onTouchEnd={(e) => e.target === e.currentTarget && setMostrarVistos(false)}
           onClick={(e) => e.target === e.currentTarget && setMostrarVistos(false)}>
           <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-3 overflow-y-auto" style={{ maxHeight: '60vh' }}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-black text-white flex items-center gap-2"><EyeIcon className="w-5 h-5" /> Visto por {totalVistos}</h3>
-              <button onClick={() => setMostrarVistos(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
+              <button onTouchEnd={() => setMostrarVistos(false)} onClick={() => setMostrarVistos(false)}
+                className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
                 <XMarkIcon className="w-5 h-5 text-gray-400" />
               </button>
             </div>
@@ -472,21 +577,24 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       )}
 
+      {/* Modal opciones */}
       {mostrarOpciones && !esMia && (
         <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
+          onTouchEnd={(e) => e.target === e.currentTarget && setMostrarOpciones(false)}
           onClick={(e) => e.target === e.currentTarget && setMostrarOpciones(false)}>
           <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-2">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-black text-white">Opciones</h3>
-              <button onClick={() => setMostrarOpciones(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
+              <button onTouchEnd={() => setMostrarOpciones(false)} onClick={() => setMostrarOpciones(false)}
+                className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
                 <XMarkIcon className="w-5 h-5 text-gray-400" />
               </button>
             </div>
-            <button onClick={handleReportar}
+            <button onTouchEnd={handleReportar} onClick={handleReportar}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-900/20 text-red-400 font-bold text-sm active:scale-95">
               <FlagIcon className="w-5 h-5" /> Reportar historia
             </button>
-            <button onClick={() => setMostrarOpciones(false)}
+            <button onTouchEnd={() => setMostrarOpciones(false)} onClick={() => setMostrarOpciones(false)}
               className="w-full px-4 py-3 rounded-2xl bg-gray-800 text-gray-300 font-bold text-sm active:scale-95">
               Cancelar
             </button>
@@ -497,7 +605,8 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   );
 }
 
-export default function Stories() {
+// ─── Stories principal ────────────────────────────────────────────────────────
+export default function Stories({ onVisorChange }: StoriesProps) {
   const user = auth.currentUser;
 
   const [stories,     setStories]     = useState<Story[]>([]);
@@ -525,6 +634,10 @@ export default function Stories() {
     );
   }, []);
 
+  useEffect(() => {
+    onVisorChange?.(viendoGrupo !== null || archivoEdit !== null);
+  }, [viendoGrupo, archivoEdit]);
+
   function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f || !user) return;
@@ -540,11 +653,9 @@ export default function Stories() {
     try {
       const { url: mediaUrl, tipo: mediaType } = await subirArchivoCloudinary(archivoEdit);
       await addDoc(collection(db, 'stories'), {
-        userId:     user.uid,
-        userName:   user.displayName ?? 'Usuario',
-        userPhoto:  user.photoURL    ?? '',
-        mediaUrl, mediaType, textos, stickers,
-        vistos: [], reacciones: {}, createdAt: serverTimestamp(),
+        userId: user.uid, userName: user.displayName ?? 'Usuario',
+        userPhoto: user.photoURL ?? '', mediaUrl, mediaType,
+        textos, stickers, vistos: [], reacciones: {}, createdAt: serverTimestamp(),
       });
       setArchivoEdit(null);
     } catch (e) { console.error('[Stories] upload error:', e); }
@@ -619,4 +730,4 @@ export default function Stories() {
       )}
     </>
   );
-                }
+      }
