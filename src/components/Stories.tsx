@@ -3,11 +3,11 @@ import { useState, useEffect, useRef } from 'react';
 import { db, auth } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
-  serverTimestamp, where, doc, updateDoc, arrayUnion, getDoc, setDoc,
+  serverTimestamp, where, doc, updateDoc, arrayUnion, getDoc, setDoc, deleteDoc,
 } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { subirArchivoCloudinary } from '../utils/cloudinary';
-import { PlusIcon, XMarkIcon, PaperAirplaneIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, XMarkIcon, PaperAirplaneIcon, EyeIcon, TrashIcon, FlagIcon } from '@heroicons/react/24/outline';
 
 interface Story {
   id:         string;
@@ -38,43 +38,49 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   const user     = auth.currentUser;
   const navigate = useNavigate();
 
-  const [idx,           setIdx]           = useState(0);
-  const [progreso,      setProgreso]      = useState(0);
-  const [pausado,       setPausado]       = useState(false);
-  const [mostrarVistos, setMostrarVistos] = useState(false);
-  const [respuesta,     setRespuesta]     = useState('');
-  const [enviando,      setEnviando]      = useState(false);
+  const [idx,            setIdx]            = useState(0);
+  const [progreso,       setProgreso]       = useState(0);
+  const [pausado,        setPausado]        = useState(false);
+  const [mostrarVistos,  setMostrarVistos]  = useState(false);
+  const [mostrarOpciones,setMostrarOpciones]= useState(false);
+  const [respuesta,      setRespuesta]      = useState('');
+  const [enviando,       setEnviando]       = useState(false);
 
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const holdTimer   = useRef<ReturnType<typeof setTimeout>  | null>(null);
-  const isHolding   = useRef(false);
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const isHolding = useRef(false);
   const progresoRef = useRef(0);
-  const startRef    = useRef(0);
 
-  const story    = grupo.stories[idx];
-  const esMia    = story?.userId === user?.uid;
+  const story  = grupo.stories[idx];
+  const esMia  = story?.userId === user?.uid;
   const DURACION = story?.mediaType === 'video' ? 15000 : 5000;
 
+  // Marcar como visto
   useEffect(() => {
     if (user && story && !esMia && !story.vistos?.includes(user.uid)) {
       updateDoc(doc(db, 'stories', story.id), { vistos: arrayUnion(user.uid) }).catch(() => {});
     }
   }, [story?.id]);
 
-  function iniciarTimer(desde: number = 0) {
+  // Timer
+  function iniciarTimer() {
     if (timerRef.current) clearInterval(timerRef.current);
-    progresoRef.current = desde;
-    startRef.current    = Date.now() - (desde / 100) * DURACION;
+    const startProg = progresoRef.current;
+    const startTime = Date.now() - (startProg / 100) * DURACION;
 
     timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - startRef.current;
+      const elapsed = Date.now() - startTime;
       const p = Math.min((elapsed / DURACION) * 100, 100);
       progresoRef.current = p;
       setProgreso(p);
       if (p >= 100) {
         clearInterval(timerRef.current!);
-        if (idx < grupo.stories.length - 1) setIdx((i) => i + 1);
-        else onClose();
+        progresoRef.current = 0;
+        setIdx((prev) => {
+          if (prev < grupo.stories.length - 1) return prev + 1;
+          onClose();
+          return prev;
+        });
       }
     }, 50);
   }
@@ -84,23 +90,25 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   }
 
   useEffect(() => {
+    progresoRef.current = 0;
+    setProgreso(0);
+    if (!pausado) iniciarTimer();
+    return () => detenerTimer();
+  }, [idx]);
+
+  useEffect(() => {
     if (pausado) {
       detenerTimer();
     } else {
-      iniciarTimer(progresoRef.current);
+      iniciarTimer();
     }
-    return () => detenerTimer();
-  }, [idx, pausado]);
+  }, [pausado]);
 
   useEffect(() => {
-    if (mostrarVistos || respuesta) {
-      setPausado(true);
-    } else {
-      setPausado(false);
-    }
-  }, [mostrarVistos, respuesta]);
+    setPausado(mostrarVistos || mostrarOpciones || !!respuesta);
+  }, [mostrarVistos, mostrarOpciones, respuesta]);
 
-  // Touch handlers para hold (pausar) y tap (saltar/retroceder)
+  // Hold handlers
   function onTouchStart(side: 'left' | 'right') {
     isHolding.current = false;
     holdTimer.current = setTimeout(() => {
@@ -112,21 +120,17 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   function onTouchEnd(side: 'left' | 'right') {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     if (isHolding.current) {
-      // Soltó después de hold — reanudar
       setPausado(false);
       isHolding.current = false;
       return;
     }
-    // Fue un tap rápido — saltar
     if (side === 'left') {
-      if (idx > 0) {
-        progresoRef.current = 0;
-        setIdx((i) => i - 1);
-      }
+      progresoRef.current = 0;
+      setIdx((prev) => Math.max(0, prev - 1));
     } else {
+      progresoRef.current = 0;
       if (idx < grupo.stories.length - 1) {
-        progresoRef.current = 0;
-        setIdx((i) => i + 1);
+        setIdx((prev) => prev + 1);
       } else {
         onClose();
       }
@@ -137,11 +141,37 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
     if (!user || !story) return;
     try {
       await updateDoc(doc(db, 'stories', story.id), { [`reacciones.${user.uid}`]: emoji });
-      await addDoc(collection(db, 'notifications'), {
-        uid: story.userId, titulo: `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu historia`,
-        mensaje: emoji, tipo: 'reaccion', leida: false, creadoEn: serverTimestamp(),
-      });
+      if (story.userId !== user.uid) {
+        await addDoc(collection(db, 'notifications'), {
+          uid: story.userId, titulo: `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu historia`,
+          mensaje: emoji, tipo: 'reaccion', leida: false, creadoEn: serverTimestamp(),
+        });
+      }
     } catch (e) { console.error('[Stories] reacción:', e); }
+  }
+
+  async function handleEliminar() {
+    if (!story || !esMia) return;
+    try {
+      await deleteDoc(doc(db, 'stories', story.id));
+      if (grupo.stories.length <= 1) {
+        onClose();
+      } else {
+        progresoRef.current = 0;
+        setIdx((prev) => Math.max(0, prev - 1));
+      }
+    } catch (e) { console.error('[Stories] eliminar:', e); }
+  }
+
+  async function handleReportar() {
+    if (!user || !story) return;
+    setMostrarOpciones(false);
+    try {
+      await addDoc(collection(db, 'reports'), {
+        storyId: story.id, reportadoPor: user.uid,
+        creadoEn: serverTimestamp(), revisado: false,
+      });
+    } catch (e) { console.error('[Stories] reportar:', e); }
   }
 
   async function handleResponder() {
@@ -190,6 +220,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
 
   return (
     <div className="fixed inset-0 z-[300] bg-black flex flex-col select-none">
+
       {/* Barras progreso */}
       <div className="absolute top-4 left-3 right-3 flex gap-1 z-10">
         {grupo.stories.map((_, i) => (
@@ -216,10 +247,22 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
         <div className="flex items-center gap-2">
           {esMia && (
-            <button onClick={() => setMostrarVistos(true)}
-              className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1">
-              <EyeIcon className="w-4 h-4 text-white" />
-              <span className="text-white text-xs font-bold">{totalVistos}</span>
+            <>
+              <button onClick={() => setMostrarVistos(true)}
+                className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1">
+                <EyeIcon className="w-4 h-4 text-white" />
+                <span className="text-white text-xs font-bold">{totalVistos}</span>
+              </button>
+              <button onClick={handleEliminar}
+                className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+                <TrashIcon className="w-4 h-4 text-red-400" />
+              </button>
+            </>
+          )}
+          {!esMia && (
+            <button onClick={() => setMostrarOpciones(true)}
+              className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+              <FlagIcon className="w-4 h-4 text-white" />
             </button>
           )}
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
@@ -234,17 +277,15 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         : <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
       }
 
-      {/* Zonas tap/hold — izquierda y derecha */}
-      <div className="absolute inset-0 flex z-10" style={{ bottom: esMia ? '0' : '120px' }}>
-        <div
-          className="flex-1 h-full"
+      {/* Zonas tap/hold */}
+      <div className="absolute inset-x-0 top-0 flex z-10" style={{ bottom: esMia ? '0' : '130px' }}>
+        <div className="flex-1 h-full"
           onTouchStart={() => onTouchStart('left')}
           onTouchEnd={() => onTouchEnd('left')}
           onMouseDown={() => onTouchStart('left')}
           onMouseUp={() => onTouchEnd('left')}
         />
-        <div
-          className="flex-1 h-full"
+        <div className="flex-1 h-full"
           onTouchStart={() => onTouchStart('right')}
           onTouchEnd={() => onTouchEnd('right')}
           onMouseDown={() => onTouchStart('right')}
@@ -252,9 +293,9 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         />
       </div>
 
-      {/* Bottom: reacciones + respuesta */}
+      {/* Bottom: reacciones + respuesta (solo para historias ajenas) */}
       {!esMia && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8 space-y-3">
+        <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8 pt-4 space-y-3 bg-gradient-to-t from-black/60 to-transparent">
           <div className="flex justify-center gap-3">
             {REACCIONES_RAPIDAS.map((emoji) => (
               <button key={emoji} onClick={() => handleReaccion(emoji)}
@@ -314,6 +355,30 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
                 <p className="text-sm font-bold">Nadie vio esta historia aún</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal opciones (reportar) */}
+      {mostrarOpciones && !esMia && (
+        <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
+          onClick={(e) => e.target === e.currentTarget && setMostrarOpciones(false)}>
+          <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-2">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-black text-white">Opciones</h3>
+              <button onClick={() => setMostrarOpciones(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
+                <XMarkIcon className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <button onClick={handleReportar}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-900/20 text-red-400 font-bold text-sm active:scale-95 transition-transform">
+              <FlagIcon className="w-5 h-5" />
+              Reportar historia
+            </button>
+            <button onClick={() => setMostrarOpciones(false)}
+              className="w-full px-4 py-3 rounded-2xl bg-gray-800 text-gray-300 font-bold text-sm active:scale-95 transition-transform">
+              Cancelar
+            </button>
           </div>
         </div>
       )}
@@ -445,4 +510,4 @@ export default function Stories() {
       )}
     </>
   );
-                   }
+                                        }
