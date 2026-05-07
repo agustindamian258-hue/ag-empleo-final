@@ -7,7 +7,10 @@ import {
 } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { subirArchivoCloudinary } from '../utils/cloudinary';
-import { PlusIcon, XMarkIcon, PaperAirplaneIcon, EyeIcon, TrashIcon, FlagIcon } from '@heroicons/react/24/outline';
+import {
+  PlusIcon, XMarkIcon, PaperAirplaneIcon, EyeIcon,
+  TrashIcon, FlagIcon, FaceSmileIcon, CheckIcon,
+} from '@heroicons/react/24/outline';
 
 interface Story {
   id:         string;
@@ -29,11 +32,220 @@ interface StoryGroup {
   visto:     boolean;
 }
 
+interface TextoOverlay {
+  id:    string;
+  texto: string;
+  x:     number;
+  y:     number;
+  color: string;
+  size:  number;
+}
+
 const MAX_MB             = 50;
 const STORY_EXPIRE_MS    = 12 * 60 * 60 * 1000;
 const REACCIONES_RAPIDAS = ['❤️', '😂', '😍', '👏', '😲'];
 const HOLD_DELAY_MS      = 150;
+const COLORES_TEXTO      = ['#ffffff', '#000000', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de'];
+const STICKERS           = ['🔥', '💯', '⭐', '🎉', '👀', '💪', '🙌', '✨', '💥', '🏆', '❤️', '😎', '🤙', '🎯', '💼', '🌟'];
 
+// ─── Editor de historia ───────────────────────────────────────────────────────
+function EditorStory({
+  file,
+  onPublicar,
+  onCancelar,
+}: {
+  file:       File;
+  onPublicar: (overlays: TextoOverlay[], stickers: { emoji: string; x: number; y: number }[]) => void;
+  onCancelar: () => void;
+}) {
+  const previewUrl = useRef(URL.createObjectURL(file));
+  const esVideo    = file.type.startsWith('video/');
+
+  const [textos,       setTextos]       = useState<TextoOverlay[]>([]);
+  const [stickers,     setStickers]     = useState<{ id: string; emoji: string; x: number; y: number }[]>([]);
+  const [modoTexto,    setModoTexto]    = useState(false);
+  const [modoSticker,  setModoSticker]  = useState(false);
+  const [textoActual,  setTextoActual]  = useState('');
+  const [colorTexto,   setColorTexto]   = useState('#ffffff');
+  const [sizeTexto,    setSizeTexto]    = useState(24);
+  const [subiendo,     setSubiendo]     = useState(false);
+
+  const canvasRef    = useRef<HTMLDivElement>(null);
+  const inputTextoRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => URL.revokeObjectURL(previewUrl.current);
+  }, []);
+
+  useEffect(() => {
+    if (modoTexto) setTimeout(() => inputTextoRef.current?.focus(), 100);
+  }, [modoTexto]);
+
+  function agregarTexto() {
+    if (!textoActual.trim()) { setModoTexto(false); return; }
+    setTextos(prev => [...prev, {
+      id:     Date.now().toString(),
+      texto:  textoActual.trim(),
+      x:      30,
+      y:      40 + prev.length * 12,
+      color:  colorTexto,
+      size:   sizeTexto,
+    }]);
+    setTextoActual('');
+    setModoTexto(false);
+  }
+
+  function agregarSticker(emoji: string) {
+    setStickers(prev => [...prev, {
+      id:    Date.now().toString(),
+      emoji,
+      x:     20 + Math.random() * 60,
+      y:     20 + Math.random() * 60,
+    }]);
+    setModoSticker(false);
+  }
+
+  function eliminarTexto(id: string) {
+    setTextos(prev => prev.filter(t => t.id !== id));
+  }
+
+  function eliminarSticker(id: string) {
+    setStickers(prev => prev.filter(s => s.id !== id));
+  }
+
+  async function handlePublicar() {
+    setSubiendo(true);
+    try {
+      onPublicar(textos, stickers);
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
+      {/* Preview con overlays */}
+      <div ref={canvasRef} className="relative flex-1 overflow-hidden">
+        {esVideo
+          ? <video src={previewUrl.current} autoPlay muted loop playsInline className="w-full h-full object-cover" />
+          : <img src={previewUrl.current} alt="preview" className="w-full h-full object-cover" />
+        }
+
+        {/* Textos */}
+        {textos.map((t) => (
+          <div key={t.id}
+            className="absolute cursor-pointer active:scale-95 transition-transform"
+            style={{ left: `${t.x}%`, top: `${t.y}%`, color: t.color, fontSize: t.size, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)', maxWidth: '80%' }}
+            onDoubleClick={() => eliminarTexto(t.id)}
+          >
+            {t.texto}
+          </div>
+        ))}
+
+        {/* Stickers */}
+        {stickers.map((s) => (
+          <div key={s.id}
+            className="absolute cursor-pointer text-4xl active:scale-95 transition-transform"
+            style={{ left: `${s.x}%`, top: `${s.y}%` }}
+            onDoubleClick={() => eliminarSticker(s.id)}
+          >
+            {s.emoji}
+          </div>
+        ))}
+
+        {/* Hint doble tap */}
+        {(textos.length > 0 || stickers.length > 0) && (
+          <p className="absolute bottom-4 left-0 right-0 text-center text-white/50 text-xs">
+            Doble tap para eliminar
+          </p>
+        )}
+      </div>
+
+      {/* Toolbar */}
+      {!modoTexto && !modoSticker && (
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20">
+          <button onClick={onCancelar} className="w-9 h-9 rounded-full bg-black/50 flex items-center justify-center">
+            <XMarkIcon className="w-5 h-5 text-white" />
+          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setModoTexto(true)}
+              className="px-3 py-1.5 rounded-full bg-black/50 text-white text-sm font-black active:scale-95">
+              Aa
+            </button>
+            <button onClick={() => setModoSticker(true)}
+              className="w-9 h-9 rounded-full bg-black/50 flex items-center justify-center">
+              <FaceSmileIcon className="w-5 h-5 text-white" />
+            </button>
+          </div>
+          <button onClick={handlePublicar} disabled={subiendo}
+            className="px-4 py-2 rounded-full bg-purple-600 text-white text-sm font-black flex items-center gap-1 active:scale-95 disabled:opacity-50">
+            <CheckIcon className="w-4 h-4" />
+            {subiendo ? 'Subiendo...' : 'Publicar'}
+          </button>
+        </div>
+      )}
+
+      {/* Panel texto */}
+      {modoTexto && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/40">
+          <input
+            ref={inputTextoRef}
+            value={textoActual}
+            onChange={(e) => setTextoActual(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && agregarTexto()}
+            placeholder="Escribí algo..."
+            maxLength={80}
+            className="bg-transparent text-center focus:outline-none w-4/5"
+            style={{ color: colorTexto, fontSize: sizeTexto, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}
+          />
+          {/* Colores */}
+          <div className="flex gap-2 mt-6">
+            {COLORES_TEXTO.map((c) => (
+              <button key={c} onClick={() => setColorTexto(c)}
+                className={`w-7 h-7 rounded-full border-2 transition-transform active:scale-90 ${colorTexto === c ? 'border-white scale-110' : 'border-transparent'}`}
+                style={{ background: c }} />
+            ))}
+          </div>
+          {/* Tamaño */}
+          <input type="range" min={16} max={48} value={sizeTexto}
+            onChange={(e) => setSizeTexto(Number(e.target.value))}
+            className="w-48 mt-4 accent-purple-500" />
+          <div className="flex gap-3 mt-4">
+            <button onClick={() => { setModoTexto(false); setTextoActual(''); }}
+              className="px-4 py-2 rounded-full bg-white/20 text-white text-sm font-bold">
+              Cancelar
+            </button>
+            <button onClick={agregarTexto}
+              className="px-4 py-2 rounded-full bg-purple-600 text-white text-sm font-black">
+              Agregar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Panel stickers */}
+      {modoSticker && (
+        <div className="absolute bottom-0 left-0 right-0 z-30 bg-gray-900 rounded-t-3xl px-4 pt-4 pb-8">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-white font-black">Stickers</p>
+            <button onClick={() => setModoSticker(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
+              <XMarkIcon className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
+          <div className="grid grid-cols-8 gap-2">
+            {STICKERS.map((emoji) => (
+              <button key={emoji} onClick={() => agregarSticker(emoji)}
+                className="text-3xl active:scale-125 transition-transform text-center">
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+          }
+// ─── Visor de story ───────────────────────────────────────────────────────────
 function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void }) {
   const user     = auth.currentUser;
   const navigate = useNavigate();
@@ -50,17 +262,14 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   const holdTimer   = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const isHolding   = useRef(false);
   const progresoRef = useRef(0);
-  const idxRef      = useRef(0); // ref para acceder al idx actual dentro del interval
+  const idxRef      = useRef(0);
 
   const story    = grupo.stories[idx];
   const esMia    = story?.userId === user?.uid;
   const DURACION = story?.mediaType === 'video' ? 15000 : 5000;
 
-  useEffect(() => {
-    idxRef.current = idx;
-  }, [idx]);
+  useEffect(() => { idxRef.current = idx; }, [idx]);
 
-  // Marcar como visto
   useEffect(() => {
     if (user && story && !esMia && !story.vistos?.includes(user.uid)) {
       updateDoc(doc(db, 'stories', story.id), { vistos: arrayUnion(user.uid) }).catch(() => {});
@@ -70,84 +279,52 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   function iniciarTimer() {
     if (timerRef.current) clearInterval(timerRef.current);
     const startTime = Date.now() - (progresoRef.current / 100) * DURACION;
-
     timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const p = Math.min((elapsed / DURACION) * 100, 100);
+      const p = Math.min(((Date.now() - startTime) / DURACION) * 100, 100);
       progresoRef.current = p;
       setProgreso(p);
       if (p >= 100) {
         clearInterval(timerRef.current!);
         progresoRef.current = 0;
         const current = idxRef.current;
-        if (current < grupo.stories.length - 1) {
-          setIdx(current + 1);
-        } else {
-          onClose();
-        }
+        if (current < grupo.stories.length - 1) setIdx(current + 1);
+        else onClose();
       }
     }, 50);
   }
 
-  function detenerTimer() {
-    if (timerRef.current) clearInterval(timerRef.current);
-  }
+  function detenerTimer() { if (timerRef.current) clearInterval(timerRef.current); }
 
   useEffect(() => {
-    progresoRef.current = 0;
-    setProgreso(0);
+    progresoRef.current = 0; setProgreso(0);
     if (!pausado) iniciarTimer();
     return () => detenerTimer();
   }, [idx]);
 
-  useEffect(() => {
-    if (pausado) {
-      detenerTimer();
-    } else {
-      iniciarTimer();
-    }
-  }, [pausado]);
-
-  useEffect(() => {
-    setPausado(mostrarVistos || mostrarOpciones || !!respuesta);
-  }, [mostrarVistos, mostrarOpciones, respuesta]);
+  useEffect(() => { pausado ? detenerTimer() : iniciarTimer(); }, [pausado]);
+  useEffect(() => { setPausado(mostrarVistos || mostrarOpciones || !!respuesta); }, [mostrarVistos, mostrarOpciones, respuesta]);
 
   function onTouchStart() {
     isHolding.current = false;
-    holdTimer.current = setTimeout(() => {
-      isHolding.current = true;
-      setPausado(true);
-    }, HOLD_DELAY_MS);
+    holdTimer.current = setTimeout(() => { isHolding.current = true; setPausado(true); }, HOLD_DELAY_MS);
   }
 
   function onTouchEnd(side: 'left' | 'right') {
     if (holdTimer.current) clearTimeout(holdTimer.current);
-    if (isHolding.current) {
-      setPausado(false);
-      isHolding.current = false;
-      return;
-    }
+    if (isHolding.current) { setPausado(false); isHolding.current = false; return; }
     progresoRef.current = 0;
-    if (side === 'left') {
-      const prev = idxRef.current - 1;
-      if (prev >= 0) setIdx(prev);
-    } else {
-      const next = idxRef.current + 1;
-      if (next < grupo.stories.length) setIdx(next);
-      else onClose();
-    }
+    if (side === 'left') { const p = idxRef.current - 1; if (p >= 0) setIdx(p); }
+    else { const n = idxRef.current + 1; if (n < grupo.stories.length) setIdx(n); else onClose(); }
   }
 
   async function handleReaccion(emoji: string) {
     if (!user || !story) return;
     try {
       await updateDoc(doc(db, 'stories', story.id), { [`reacciones.${user.uid}`]: emoji });
-      if (story.userId !== user.uid) {
-        await addDoc(collection(db, 'notifications'), {
-          uid: story.userId, titulo: `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu historia`,
-          mensaje: emoji, tipo: 'reaccion', leida: false, creadoEn: serverTimestamp(),
-        });
-      }
+      if (story.userId !== user.uid) await addDoc(collection(db, 'notifications'), {
+        uid: story.userId, titulo: `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu historia`,
+        mensaje: emoji, tipo: 'reaccion', leida: false, creadoEn: serverTimestamp(),
+      });
     } catch (e) { console.error('[Stories] reacción:', e); }
   }
 
@@ -156,10 +333,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
     try {
       await deleteDoc(doc(db, 'stories', story.id));
       if (grupo.stories.length <= 1) onClose();
-      else {
-        progresoRef.current = 0;
-        setIdx(Math.max(0, idxRef.current - 1));
-      }
+      else { progresoRef.current = 0; setIdx(Math.max(0, idxRef.current - 1)); }
     } catch (e) { console.error('[Stories] eliminar:', e); }
   }
 
@@ -168,8 +342,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
     setMostrarOpciones(false);
     try {
       await addDoc(collection(db, 'reports'), {
-        storyId: story.id, reportadoPor: user.uid,
-        creadoEn: serverTimestamp(), revisado: false,
+        storyId: story.id, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
       });
     } catch (e) { console.error('[Stories] reportar:', e); }
   }
@@ -200,9 +373,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
       } else {
         await updateDoc(chatRef, { lastMessage: msg, lastMessageAt: serverTimestamp(), unreadBy: [story.userId] });
       }
-      await addDoc(collection(db, 'chats', chatId, 'messages'), {
-        senderId: user.uid, text: msg, createdAt: serverTimestamp(),
-      });
+      await addDoc(collection(db, 'chats', chatId, 'messages'), { senderId: user.uid, text: msg, createdAt: serverTimestamp() });
       await addDoc(collection(db, 'notifications'), {
         uid: story.userId, titulo: `💬 ${user.displayName ?? 'Alguien'} respondió tu historia`,
         mensaje: respuesta.trim().slice(0, 80), tipo: 'mensaje', leida: false, creadoEn: serverTimestamp(),
@@ -219,10 +390,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   const totalVistos = story.vistos?.length ?? 0;
 
   return (
-    // z-[9999] para tapar el navbar completamente
     <div className="fixed inset-0 z-[9999] bg-black flex flex-col select-none">
-
-      {/* Barras progreso */}
       <div className="absolute top-4 left-3 right-3 flex gap-1 z-10">
         {grupo.stories.map((_, i) => (
           <div key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
@@ -232,13 +400,10 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         ))}
       </div>
 
-      {/* Header */}
       <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
-          <img
-            src={grupo.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(grupo.userName)}&background=7c3aed&color=fff`}
-            alt={grupo.userName} className="w-9 h-9 rounded-full object-cover ring-2 ring-white"
-          />
+          <img src={grupo.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(grupo.userName)}&background=7c3aed&color=fff`}
+            alt={grupo.userName} className="w-9 h-9 rounded-full object-cover ring-2 ring-white" />
           <div>
             <p className="text-white font-black text-sm drop-shadow">{grupo.userName}</p>
             <p className="text-white/60 text-xs">
@@ -254,15 +419,13 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
                 <EyeIcon className="w-4 h-4 text-white" />
                 <span className="text-white text-xs font-bold">{totalVistos}</span>
               </button>
-              <button onClick={handleEliminar}
-                className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+              <button onClick={handleEliminar} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
                 <TrashIcon className="w-4 h-4 text-red-400" />
               </button>
             </>
           )}
           {!esMia && (
-            <button onClick={() => setMostrarOpciones(true)}
-              className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+            <button onClick={() => setMostrarOpciones(true)} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
               <FlagIcon className="w-4 h-4 text-white" />
             </button>
           )}
@@ -272,29 +435,34 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       </div>
 
-      {/* Media */}
       {story.mediaType === 'video'
         ? <video src={story.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover" />
         : <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
       }
 
-      {/* Zonas tap/hold — NO cubren el área de reacciones/respuesta */}
+      {/* Overlays de texto y stickers guardados */}
+      {(story as any).textos?.map((t: any) => (
+        <div key={t.id} className="absolute pointer-events-none"
+          style={{ left: `${t.x}%`, top: `${t.y}%`, color: t.color, fontSize: t.size, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+          {t.texto}
+        </div>
+      ))}
+      {(story as any).stickers?.map((s: any) => (
+        <div key={s.id} className="absolute pointer-events-none text-4xl"
+          style={{ left: `${s.x}%`, top: `${s.y}%` }}>
+          {s.emoji}
+        </div>
+      ))}
+
       <div className="absolute inset-x-0 top-0 flex z-10" style={{ bottom: esMia ? '0' : '130px' }}>
         <div className="flex-1 h-full"
-          onTouchStart={() => onTouchStart()}
-          onTouchEnd={() => onTouchEnd('left')}
-          onMouseDown={() => onTouchStart()}
-          onMouseUp={() => onTouchEnd('left')}
-        />
+          onTouchStart={() => onTouchStart()} onTouchEnd={() => onTouchEnd('left')}
+          onMouseDown={() => onTouchStart()} onMouseUp={() => onTouchEnd('left')} />
         <div className="flex-1 h-full"
-          onTouchStart={() => onTouchStart()}
-          onTouchEnd={() => onTouchEnd('right')}
-          onMouseDown={() => onTouchStart()}
-          onMouseUp={() => onTouchEnd('right')}
-        />
+          onTouchStart={() => onTouchStart()} onTouchEnd={() => onTouchEnd('right')}
+          onMouseDown={() => onTouchStart()} onMouseUp={() => onTouchEnd('right')} />
       </div>
 
-      {/* Bottom: reacciones + respuesta */}
       {!esMia && (
         <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8 pt-4 space-y-3 bg-gradient-to-t from-black/60 to-transparent">
           <div className="flex justify-center gap-3">
@@ -306,16 +474,12 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
             ))}
           </div>
           <div className="flex gap-2 items-center">
-            <input
-              value={respuesta}
-              onChange={(e) => setRespuesta(e.target.value)}
+            <input value={respuesta} onChange={(e) => setRespuesta(e.target.value)}
               onFocus={() => setPausado(true)}
               onBlur={() => { if (!respuesta) setPausado(false); }}
               onKeyDown={(e) => e.key === 'Enter' && handleResponder()}
-              placeholder="Responder historia..."
-              maxLength={200}
-              className="flex-1 bg-white/20 backdrop-blur rounded-full px-4 py-2.5 text-white placeholder-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
-            />
+              placeholder="Responder historia..." maxLength={200}
+              className="flex-1 bg-white/20 backdrop-blur rounded-full px-4 py-2.5 text-white placeholder-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-white/50" />
             {respuesta.trim() && (
               <button onClick={handleResponder} disabled={enviando}
                 className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50">
@@ -326,15 +490,12 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       )}
 
-      {/* Modal vistos */}
       {mostrarVistos && esMia && (
         <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
           onClick={(e) => e.target === e.currentTarget && setMostrarVistos(false)}>
           <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-3 overflow-y-auto" style={{ maxHeight: '60vh' }}>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-black text-white flex items-center gap-2">
-                <EyeIcon className="w-5 h-5" /> Visto por {totalVistos}
-              </h3>
+              <h3 className="font-black text-white flex items-center gap-2"><EyeIcon className="w-5 h-5" /> Visto por {totalVistos}</h3>
               <button onClick={() => setMostrarVistos(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
                 <XMarkIcon className="w-5 h-5 text-gray-400" />
               </button>
@@ -360,7 +521,6 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       )}
 
-      {/* Modal opciones */}
       {mostrarOpciones && !esMia && (
         <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
           onClick={(e) => e.target === e.currentTarget && setMostrarOpciones(false)}>
@@ -373,8 +533,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
             </div>
             <button onClick={handleReportar}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-900/20 text-red-400 font-bold text-sm active:scale-95 transition-transform">
-              <FlagIcon className="w-5 h-5" />
-              Reportar historia
+              <FlagIcon className="w-5 h-5" /> Reportar historia
             </button>
             <button onClick={() => setMostrarOpciones(false)}
               className="w-full px-4 py-3 rounded-2xl bg-gray-800 text-gray-300 font-bold text-sm active:scale-95 transition-transform">
@@ -387,13 +546,15 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   );
 }
 
+// ─── Stories principal ────────────────────────────────────────────────────────
 export default function Stories() {
   const user = auth.currentUser;
 
-  const [stories,     setStories]     = useState<Story[]>([]);
-  const [subiendo,    setSubiendo]    = useState(false);
-  const [viendoGrupo, setViendoGrupo] = useState<StoryGroup | null>(null);
-  const [vistos,      setVistos]      = useState<Set<string>>(() => {
+  const [stories,      setStories]      = useState<Story[]>([]);
+  const [viendoGrupo,  setViendoGrupo]  = useState<StoryGroup | null>(null);
+  const [archivoEdit,  setArchivoEdit]  = useState<File | null>(null);
+  const [subiendo,     setSubiendo]     = useState(false);
+  const [vistos,       setVistos]       = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('ag_stories_vistos');
       return raw ? new Set(JSON.parse(raw)) : new Set();
@@ -414,24 +575,37 @@ export default function Stories() {
     );
   }, []);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f || !user) return;
     if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) return;
     if (f.size > MAX_MB * 1024 * 1024) return;
+    setArchivoEdit(f);
+    // reset input para poder seleccionar el mismo archivo de nuevo
+    e.target.value = '';
+  }
+
+  async function handlePublicar(
+    textos:   TextoOverlay[],
+    stickers: { id: string; emoji: string; x: number; y: number }[]
+  ) {
+    if (!archivoEdit || !user) return;
     setSubiendo(true);
     try {
-      const { url: mediaUrl, tipo: mediaType } = await subirArchivoCloudinary(f);
+      const { url: mediaUrl, tipo: mediaType } = await subirArchivoCloudinary(archivoEdit);
       await addDoc(collection(db, 'stories'), {
         userId:     user.uid,
         userName:   user.displayName ?? 'Usuario',
         userPhoto:  user.photoURL    ?? '',
         mediaUrl,
         mediaType,
+        textos,
+        stickers,
         vistos:     [],
         reacciones: {},
         createdAt:  serverTimestamp(),
       });
+      setArchivoEdit(null);
     } catch (e) { console.error('[Stories] upload error:', e); }
     finally { setSubiendo(false); }
   }
@@ -484,7 +658,7 @@ export default function Stories() {
                 ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 : <PlusIcon className="w-3 h-3 text-white" strokeWidth={3} />
               }
-              <input ref={inputRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" disabled={subiendo} />
+              <input ref={inputRef} type="file" accept="image/*,video/*" onChange={handleFileSelected} className="hidden" disabled={subiendo} />
             </label>
           </div>
           <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold">Tu historia</span>
@@ -506,9 +680,18 @@ export default function Stories() {
         ))}
       </div>
 
+      {/* Editor antes de publicar */}
+      {archivoEdit && (
+        <EditorStory
+          file={archivoEdit}
+          onPublicar={handlePublicar}
+          onCancelar={() => setArchivoEdit(null)}
+        />
+      )}
+
       {viendoGrupo && (
         <VisorStory grupo={viendoGrupo} onClose={() => setViendoGrupo(null)} />
       )}
     </>
   );
-        }
+      }
