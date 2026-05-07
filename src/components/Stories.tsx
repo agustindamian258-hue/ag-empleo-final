@@ -38,22 +38,27 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   const user     = auth.currentUser;
   const navigate = useNavigate();
 
-  const [idx,            setIdx]            = useState(0);
-  const [progreso,       setProgreso]       = useState(0);
-  const [pausado,        setPausado]        = useState(false);
-  const [mostrarVistos,  setMostrarVistos]  = useState(false);
-  const [mostrarOpciones,setMostrarOpciones]= useState(false);
-  const [respuesta,      setRespuesta]      = useState('');
-  const [enviando,       setEnviando]       = useState(false);
+  const [idx,             setIdx]             = useState(0);
+  const [progreso,        setProgreso]        = useState(0);
+  const [pausado,         setPausado]         = useState(false);
+  const [mostrarVistos,   setMostrarVistos]   = useState(false);
+  const [mostrarOpciones, setMostrarOpciones] = useState(false);
+  const [respuesta,       setRespuesta]       = useState('');
+  const [enviando,        setEnviando]        = useState(false);
 
-  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const holdTimer = useRef<ReturnType<typeof setTimeout>  | null>(null);
-  const isHolding = useRef(false);
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdTimer   = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const isHolding   = useRef(false);
   const progresoRef = useRef(0);
+  const idxRef      = useRef(0); // ref para acceder al idx actual dentro del interval
 
-  const story  = grupo.stories[idx];
-  const esMia  = story?.userId === user?.uid;
+  const story    = grupo.stories[idx];
+  const esMia    = story?.userId === user?.uid;
   const DURACION = story?.mediaType === 'video' ? 15000 : 5000;
+
+  useEffect(() => {
+    idxRef.current = idx;
+  }, [idx]);
 
   // Marcar como visto
   useEffect(() => {
@@ -62,11 +67,9 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
     }
   }, [story?.id]);
 
-  // Timer
   function iniciarTimer() {
     if (timerRef.current) clearInterval(timerRef.current);
-    const startProg = progresoRef.current;
-    const startTime = Date.now() - (startProg / 100) * DURACION;
+    const startTime = Date.now() - (progresoRef.current / 100) * DURACION;
 
     timerRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
@@ -76,11 +79,12 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
       if (p >= 100) {
         clearInterval(timerRef.current!);
         progresoRef.current = 0;
-        setIdx((prev) => {
-          if (prev < grupo.stories.length - 1) return prev + 1;
+        const current = idxRef.current;
+        if (current < grupo.stories.length - 1) {
+          setIdx(current + 1);
+        } else {
           onClose();
-          return prev;
-        });
+        }
       }
     }, 50);
   }
@@ -108,8 +112,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
     setPausado(mostrarVistos || mostrarOpciones || !!respuesta);
   }, [mostrarVistos, mostrarOpciones, respuesta]);
 
-  // Hold handlers
-  function onTouchStart(side: 'left' | 'right') {
+  function onTouchStart() {
     isHolding.current = false;
     holdTimer.current = setTimeout(() => {
       isHolding.current = true;
@@ -124,16 +127,14 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
       isHolding.current = false;
       return;
     }
+    progresoRef.current = 0;
     if (side === 'left') {
-      progresoRef.current = 0;
-      setIdx((prev) => Math.max(0, prev - 1));
+      const prev = idxRef.current - 1;
+      if (prev >= 0) setIdx(prev);
     } else {
-      progresoRef.current = 0;
-      if (idx < grupo.stories.length - 1) {
-        setIdx((prev) => prev + 1);
-      } else {
-        onClose();
-      }
+      const next = idxRef.current + 1;
+      if (next < grupo.stories.length) setIdx(next);
+      else onClose();
     }
   }
 
@@ -154,11 +155,10 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
     if (!story || !esMia) return;
     try {
       await deleteDoc(doc(db, 'stories', story.id));
-      if (grupo.stories.length <= 1) {
-        onClose();
-      } else {
+      if (grupo.stories.length <= 1) onClose();
+      else {
         progresoRef.current = 0;
-        setIdx((prev) => Math.max(0, prev - 1));
+        setIdx(Math.max(0, idxRef.current - 1));
       }
     } catch (e) { console.error('[Stories] eliminar:', e); }
   }
@@ -219,7 +219,8 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   const totalVistos = story.vistos?.length ?? 0;
 
   return (
-    <div className="fixed inset-0 z-[300] bg-black flex flex-col select-none">
+    // z-[9999] para tapar el navbar completamente
+    <div className="fixed inset-0 z-[9999] bg-black flex flex-col select-none">
 
       {/* Barras progreso */}
       <div className="absolute top-4 left-3 right-3 flex gap-1 z-10">
@@ -277,23 +278,23 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         : <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
       }
 
-      {/* Zonas tap/hold */}
+      {/* Zonas tap/hold — NO cubren el área de reacciones/respuesta */}
       <div className="absolute inset-x-0 top-0 flex z-10" style={{ bottom: esMia ? '0' : '130px' }}>
         <div className="flex-1 h-full"
-          onTouchStart={() => onTouchStart('left')}
+          onTouchStart={() => onTouchStart()}
           onTouchEnd={() => onTouchEnd('left')}
-          onMouseDown={() => onTouchStart('left')}
+          onMouseDown={() => onTouchStart()}
           onMouseUp={() => onTouchEnd('left')}
         />
         <div className="flex-1 h-full"
-          onTouchStart={() => onTouchStart('right')}
+          onTouchStart={() => onTouchStart()}
           onTouchEnd={() => onTouchEnd('right')}
-          onMouseDown={() => onTouchStart('right')}
+          onMouseDown={() => onTouchStart()}
           onMouseUp={() => onTouchEnd('right')}
         />
       </div>
 
-      {/* Bottom: reacciones + respuesta (solo para historias ajenas) */}
+      {/* Bottom: reacciones + respuesta */}
       {!esMia && (
         <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8 pt-4 space-y-3 bg-gradient-to-t from-black/60 to-transparent">
           <div className="flex justify-center gap-3">
@@ -359,7 +360,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       )}
 
-      {/* Modal opciones (reportar) */}
+      {/* Modal opciones */}
       {mostrarOpciones && !esMia && (
         <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
           onClick={(e) => e.target === e.currentTarget && setMostrarOpciones(false)}>
@@ -510,4 +511,4 @@ export default function Stories() {
       )}
     </>
   );
-                                        }
+        }
