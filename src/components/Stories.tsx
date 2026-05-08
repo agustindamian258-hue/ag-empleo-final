@@ -61,7 +61,6 @@ const HOLD_DELAY_MS      = 150;
 const COLORES_TEXTO      = ['#ffffff', '#000000', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#af52de'];
 const STICKERS           = ['🔥', '💯', '⭐', '🎉', '👀', '💪', '🙌', '✨', '💥', '🏆', '❤️', '😎', '🤙', '🎯', '💼', '🌟'];
 
-// ─── Editor ──────────────────────────────────────────────────────────────────
 function EditorStory({ file, onPublicar, onCancelar }: {
   file:       File;
   onPublicar: (textos: TextoOverlay[], stickers: StickerOverlay[]) => Promise<void>;
@@ -110,40 +109,20 @@ function EditorStory({ file, onPublicar, onCancelar }: {
     setModoSticker(false);
   }
 
-  function handleStickerDragStart(e: React.TouchEvent, id: string) {
-    setDraggingId(id);
-    e.stopPropagation();
-  }
-
-  function handleStickerDragMove(e: React.TouchEvent) {
-    if (!draggingId || !canvasRef.current) return;
-    e.preventDefault();
-    const rect   = canvasRef.current.getBoundingClientRect();
-    const touch  = e.touches[0];
-    const x = ((touch.clientX - rect.left) / rect.width)  * 100;
-    const y = ((touch.clientY - rect.top)  / rect.height) * 100;
-    setStickers(prev => prev.map(s => s.id === draggingId
-      ? { ...s, x: Math.max(0, Math.min(90, x)), y: Math.max(0, Math.min(90, y)) }
-      : s
-    ));
-  }
-
-  function handleTextoTouchStart(e: React.TouchEvent, id: string) {
-    setDraggingId(id);
-    e.stopPropagation();
-  }
-
-  function handleTextoTouchMove(e: React.TouchEvent) {
+  function handleDragMove(e: React.TouchEvent, tipo: 'sticker' | 'texto') {
     if (!draggingId || !canvasRef.current) return;
     e.preventDefault();
     const rect  = canvasRef.current.getBoundingClientRect();
     const touch = e.touches[0];
     const x = ((touch.clientX - rect.left) / rect.width)  * 100;
     const y = ((touch.clientY - rect.top)  / rect.height) * 100;
-    setTextos(prev => prev.map(t => t.id === draggingId
-      ? { ...t, x: Math.max(0, Math.min(85, x)), y: Math.max(0, Math.min(90, y)) }
-      : t
-    ));
+    const xc = Math.max(0, Math.min(90, x));
+    const yc = Math.max(0, Math.min(90, y));
+    if (tipo === 'sticker') {
+      setStickers(prev => prev.map(s => s.id === draggingId ? { ...s, x: xc, y: yc } : s));
+    } else {
+      setTextos(prev => prev.map(t => t.id === draggingId ? { ...t, x: xc, y: yc } : t));
+    }
   }
 
   async function handlePublicar() {
@@ -156,15 +135,11 @@ function EditorStory({ file, onPublicar, onCancelar }: {
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
-      <div
-        ref={canvasRef}
-        className="relative flex-1 overflow-hidden"
+      <div ref={canvasRef} className="relative flex-1 overflow-hidden"
         onTouchMove={(e) => {
-          if (draggingId) {
-            const isSt = stickers.some(s => s.id === draggingId);
-            if (isSt) handleStickerDragMove(e);
-            else handleTextoTouchMove(e);
-          }
+          if (!draggingId) return;
+          const isSt = stickers.some(s => s.id === draggingId);
+          handleDragMove(e, isSt ? 'sticker' : 'texto');
         }}
         onTouchEnd={() => setDraggingId(null)}
       >
@@ -174,43 +149,24 @@ function EditorStory({ file, onPublicar, onCancelar }: {
         }
 
         {textos.map((t) => (
-          <div
-            key={t.id}
-            className="absolute touch-none"
-            style={{
-              left: `${t.x}%`, top: `${t.y}%`,
-              color: t.color, fontSize: t.size, fontWeight: 900,
-              textShadow: '0 1px 4px rgba(0,0,0,0.8)', maxWidth: '80%',
-              cursor: 'grab', userSelect: 'none',
-            }}
-            onTouchStart={(e) => handleTextoTouchStart(e, t.id)}
-          >
+          <div key={t.id} className="absolute touch-none"
+            style={{ left: `${t.x}%`, top: `${t.y}%`, color: t.color, fontSize: t.size, fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.8)', maxWidth: '80%', cursor: 'grab', userSelect: 'none' }}
+            onTouchStart={(e) => { e.stopPropagation(); setDraggingId(t.id); }}>
             <span>{t.texto}</span>
-            <button
-              className="ml-1 text-xs bg-black/50 rounded-full w-5 h-5 inline-flex items-center justify-center text-white"
+            <button className="ml-1 text-xs bg-black/50 rounded-full w-5 h-5 inline-flex items-center justify-center text-white"
               onTouchStart={(e) => { e.stopPropagation(); setTextos(p => p.filter(x => x.id !== t.id)); }}
-              onClick={() => setTextos(p => p.filter(x => x.id !== t.id))}
-            >✕</button>
+              onClick={() => setTextos(p => p.filter(x => x.id !== t.id))}>✕</button>
           </div>
         ))}
 
         {stickers.map((s) => (
-          <div
-            key={s.id}
-            className="absolute touch-none"
-            style={{
-              left: `${s.x}%`, top: `${s.y}%`,
-              fontSize: 36, cursor: 'grab', userSelect: 'none',
-              transform: 'translate(-50%, -50%)',
-            }}
-            onTouchStart={(e) => handleStickerDragStart(e, s.id)}
-          >
+          <div key={s.id} className="absolute touch-none"
+            style={{ left: `${s.x}%`, top: `${s.y}%`, fontSize: 36, cursor: 'grab', userSelect: 'none', transform: 'translate(-50%, -50%)' }}
+            onTouchStart={(e) => { e.stopPropagation(); setDraggingId(s.id); }}>
             <span>{s.emoji}</span>
-            <button
-              className="absolute -top-2 -right-2 text-[10px] bg-black/60 rounded-full w-4 h-4 flex items-center justify-center text-white"
+            <button className="absolute -top-2 -right-2 text-[10px] bg-black/60 rounded-full w-4 h-4 flex items-center justify-center text-white"
               onTouchStart={(e) => { e.stopPropagation(); setStickers(p => p.filter(x => x.id !== s.id)); }}
-              onClick={() => setStickers(p => p.filter(x => x.id !== s.id))}
-            >✕</button>
+              onClick={() => setStickers(p => p.filter(x => x.id !== s.id))}>✕</button>
           </div>
         ))}
       </div>
@@ -280,7 +236,6 @@ function EditorStory({ file, onPublicar, onCancelar }: {
   );
 }
 
-// ─── Visor ────────────────────────────────────────────────────────────────────
 function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void }) {
   const user     = auth.currentUser;
   const navigate = useNavigate();
@@ -337,7 +292,11 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   }, [idx]);
 
   useEffect(() => { pausado ? detenerTimer() : iniciarTimer(); }, [pausado]);
-  useEffect(() => { setPausado(mostrarVistos || mostrarOpciones || !!respuesta); }, [mostrarVistos, mostrarOpciones, respuesta]);
+
+  // pausado se activa cuando cualquier modal está abierto o hay respuesta
+  useEffect(() => {
+    setPausado(mostrarVistos || mostrarOpciones || !!respuesta);
+  }, [mostrarVistos, mostrarOpciones, respuesta]);
 
   function onTouchStart() {
     isHolding.current = false;
@@ -351,6 +310,11 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
     if (side === 'left') { const p = idxRef.current - 1; if (p >= 0) setIdx(p); }
     else { const n = idxRef.current + 1; if (n < grupo.stories.length) setIdx(n); else onClose(); }
   }
+
+  function abrirVistos() { detenerTimer(); setPausado(true); setMostrarVistos(true); }
+  function cerrarVistos() { setMostrarVistos(false); setPausado(false); }
+  function abrirOpciones() { detenerTimer(); setPausado(true); setMostrarOpciones(true); }
+  function cerrarOpciones() { setMostrarOpciones(false); setPausado(false); }
 
   async function handleReaccion(emoji: string) {
     if (!user || !story) return;
@@ -374,7 +338,7 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
 
   async function handleReportar() {
     if (!user || !story) return;
-    setMostrarOpciones(false);
+    cerrarOpciones();
     try {
       await addDoc(collection(db, 'reports'), {
         storyId: story.id, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
@@ -451,14 +415,16 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
           {esMia && (
             <>
               <button
-                onTouchEnd={(e) => { e.stopPropagation(); setMostrarVistos(true); }}
-                onClick={() => setMostrarVistos(true)}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); abrirVistos(); }}
+                onClick={abrirVistos}
                 className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1 active:scale-95">
                 <EyeIcon className="w-4 h-4 text-white" />
                 <span className="text-white text-xs font-bold">{totalVistos}</span>
               </button>
               <button
-                onTouchEnd={(e) => { e.stopPropagation(); handleEliminar(); }}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); handleEliminar(); }}
                 onClick={handleEliminar}
                 className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center active:scale-95">
                 <TrashIcon className="w-4 h-4 text-red-400" />
@@ -467,14 +433,16 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
           )}
           {!esMia && (
             <button
-              onTouchEnd={(e) => { e.stopPropagation(); setMostrarOpciones(true); }}
-              onClick={() => setMostrarOpciones(true)}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); abrirOpciones(); }}
+              onClick={abrirOpciones}
               className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center active:scale-95">
               <FlagIcon className="w-4 h-4 text-white" />
             </button>
           )}
           <button
-            onTouchEnd={(e) => { e.stopPropagation(); onClose(); }}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); onClose(); }}
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center active:scale-95">
             <XMarkIcon className="w-5 h-5 text-white" />
@@ -502,15 +470,17 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
         </div>
       ))}
 
-      {/* Zonas tap izquierda/derecha — debajo del header, encima de la media */}
-      <div className="absolute z-10" style={{ top: 80, left: 0, bottom: esMia ? 0 : 130, width: '40%' }}
-        onTouchStart={() => onTouchStart()}
-        onTouchEnd={() => onTouchEnd('left')}
-      />
-      <div className="absolute z-10" style={{ top: 80, right: 0, bottom: esMia ? 0 : 130, width: '40%' }}
-        onTouchStart={() => onTouchStart()}
-        onTouchEnd={() => onTouchEnd('right')}
-      />
+      {/* Zonas tap — solo cuando no hay modales abiertos */}
+      {!mostrarVistos && !mostrarOpciones && (
+        <>
+          <div className="absolute z-10" style={{ top: 80, left: 0, bottom: esMia ? 0 : 130, width: '40%' }}
+            onTouchStart={() => onTouchStart()}
+            onTouchEnd={() => onTouchEnd('left')} />
+          <div className="absolute z-10" style={{ top: 80, right: 0, bottom: esMia ? 0 : 130, width: '40%' }}
+            onTouchStart={() => onTouchStart()}
+            onTouchEnd={() => onTouchEnd('right')} />
+        </>
+      )}
 
       {/* Bottom reacciones + respuesta */}
       {!esMia && (
@@ -546,12 +516,16 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
       {/* Modal vistos */}
       {mostrarVistos && esMia && (
         <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
-          onTouchEnd={(e) => e.target === e.currentTarget && setMostrarVistos(false)}
-          onClick={(e) => e.target === e.currentTarget && setMostrarVistos(false)}>
+          onTouchEnd={(e) => { if (e.target === e.currentTarget) cerrarVistos(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) cerrarVistos(); }}>
           <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-3 overflow-y-auto" style={{ maxHeight: '60vh' }}>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-black text-white flex items-center gap-2"><EyeIcon className="w-5 h-5" /> Visto por {totalVistos}</h3>
-              <button onTouchEnd={() => setMostrarVistos(false)} onClick={() => setMostrarVistos(false)}
+              <h3 className="font-black text-white flex items-center gap-2">
+                <EyeIcon className="w-5 h-5" /> Visto por {totalVistos}
+              </h3>
+              <button
+                onTouchEnd={(e) => { e.stopPropagation(); cerrarVistos(); }}
+                onClick={cerrarVistos}
                 className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
                 <XMarkIcon className="w-5 h-5 text-gray-400" />
               </button>
@@ -580,21 +554,27 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
       {/* Modal opciones */}
       {mostrarOpciones && !esMia && (
         <div className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
-          onTouchEnd={(e) => e.target === e.currentTarget && setMostrarOpciones(false)}
-          onClick={(e) => e.target === e.currentTarget && setMostrarOpciones(false)}>
+          onTouchEnd={(e) => { if (e.target === e.currentTarget) cerrarOpciones(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) cerrarOpciones(); }}>
           <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-2">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-black text-white">Opciones</h3>
-              <button onTouchEnd={() => setMostrarOpciones(false)} onClick={() => setMostrarOpciones(false)}
+              <button
+                onTouchEnd={(e) => { e.stopPropagation(); cerrarOpciones(); }}
+                onClick={cerrarOpciones}
                 className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
                 <XMarkIcon className="w-5 h-5 text-gray-400" />
               </button>
             </div>
-            <button onTouchEnd={handleReportar} onClick={handleReportar}
+            <button
+              onTouchEnd={(e) => { e.stopPropagation(); handleReportar(); }}
+              onClick={handleReportar}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-900/20 text-red-400 font-bold text-sm active:scale-95">
               <FlagIcon className="w-5 h-5" /> Reportar historia
             </button>
-            <button onTouchEnd={() => setMostrarOpciones(false)} onClick={() => setMostrarOpciones(false)}
+            <button
+              onTouchEnd={(e) => { e.stopPropagation(); cerrarOpciones(); }}
+              onClick={cerrarOpciones}
               className="w-full px-4 py-3 rounded-2xl bg-gray-800 text-gray-300 font-bold text-sm active:scale-95">
               Cancelar
             </button>
@@ -605,7 +585,6 @@ function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void
   );
 }
 
-// ─── Stories principal ────────────────────────────────────────────────────────
 export default function Stories({ onVisorChange }: StoriesProps) {
   const user = auth.currentUser;
 
@@ -730,4 +709,4 @@ export default function Stories({ onVisorChange }: StoriesProps) {
       )}
     </>
   );
-      }
+                                                         }
