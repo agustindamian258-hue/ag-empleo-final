@@ -12,18 +12,14 @@ import {
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
 interface Experiencia {
   id: string; cargo: string; empresa: string;
   desde: string; hasta: string; descripcion: string;
 }
-
 interface Educacion {
   id: string; titulo: string; institucion: string;
   desde: string; hasta: string;
 }
-
 interface Idioma { id: string; idioma: string; nivel: string; }
 interface Certificacion { id: string; nombre: string; institucion: string; anio: string; }
 interface Proyecto { id: string; nombre: string; descripcion: string; url: string; }
@@ -40,8 +36,6 @@ interface FormCV {
 
 type PlantillaId = '1' | '2' | '3' | '4';
 type SeccionId = 'idiomas' | 'certificaciones' | 'proyectos' | 'referencias' | 'voluntariado';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -62,35 +56,29 @@ const PLANTILLAS = [
 ];
 
 const TOOLTIPS: Record<string, string> = {
-  name:        'Tu nombre completo tal como aparecerá en el CV. Usá nombre y apellido.',
-  email:       'Email profesional. Evitá apodos — usá nombre.apellido@gmail.com si podés.',
+  name:        'Tu nombre completo tal como aparecerá en el CV.',
+  email:       'Email profesional. Evitá apodos.',
   phone:       'Teléfono con código de área. Ej: +54 11 1234-5678',
-  ciudad:      'Ciudad donde vivís o donde podés trabajar. No es necesario poner dirección exacta.',
-  linkedin:    'Tu perfil de LinkedIn. Entrá a linkedin.com, copiá la URL de tu perfil.',
+  ciudad:      'Ciudad donde vivís o donde podés trabajar.',
+  linkedin:    'Tu perfil de LinkedIn.',
   portfolio:   'Link a tu portfolio, GitHub, Behance, o cualquier trabajo online.',
-  summary:     'Resumen de 2-3 oraciones sobre quién sos profesionalmente. Mencioná tu área, años de experiencia y tu mayor fortaleza.',
-  skills:      'Tus habilidades técnicas y blandas separadas por coma. Ej: Excel, Atención al cliente, Trabajo en equipo.',
-  experiencias:'Cargos que tuviste. Si no tenés experiencia formal, podés poner changas, trabajo familiar o proyectos personales.',
-  educaciones: 'Estudios formales o en curso. Incluí secundario si no tenés título universitario.',
-  idiomas:     'Idiomas que hablás. El nivel puede ser: Básico, Intermedio, Avanzado o Nativo.',
-  certificaciones: 'Cursos, certificados online (Coursera, Google, etc.) u otros títulos.',
-  proyectos:   'Proyectos personales, freelance o académicos que demuestren tus habilidades.',
-  referencias: 'Personas que puedan dar referencias tuyas. Siempre pedí permiso antes de incluirlas.',
-  voluntariado:'Trabajo voluntario en ONGs, vecinales, clubes, etc. Suma mucho en un CV.',
+  summary:     'Resumen de 2-3 oraciones sobre quién sos profesionalmente.',
+  skills:      'Tus habilidades separadas por coma.',
+  experiencias:'Cargos que tuviste.',
+  educaciones: 'Estudios formales o en curso.',
+  idiomas:     'Idiomas que hablás.',
+  certificaciones: 'Cursos, certificados online u otros títulos.',
+  proyectos:   'Proyectos personales, freelance o académicos.',
+  referencias: 'Personas que puedan dar referencias tuyas.',
+  voluntariado:'Trabajo voluntario en ONGs, vecinales, clubes, etc.',
 };
-
-// ─── Componente Tooltip ───────────────────────────────────────────────────────
 
 function Tooltip({ campo }: { campo: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative inline-block ml-1">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="text-gray-400 hover:text-blue-500 transition-colors"
-        aria-label="Ayuda"
-      >
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="text-gray-400 hover:text-blue-500 transition-colors" aria-label="Ayuda">
         <QuestionMarkCircleIcon className="w-4 h-4" />
       </button>
       {open && (
@@ -105,8 +93,6 @@ function Tooltip({ campo }: { campo: string }) {
   );
 }
 
-// ─── Label con Tooltip ────────────────────────────────────────────────────────
-
 function FieldLabel({ label, campo }: { label: string; campo: string }) {
   return (
     <label className="flex items-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
@@ -114,8 +100,6 @@ function FieldLabel({ label, campo }: { label: string; campo: string }) {
     </label>
   );
 }
-
-// ─── Botón Saltar Sección ─────────────────────────────────────────────────────
 
 function SkipButton({ onSkip }: { onSkip: () => void }) {
   return (
@@ -126,10 +110,8 @@ function SkipButton({ onSkip }: { onSkip: () => void }) {
   );
 }
 
-// ─── Progreso ─────────────────────────────────────────────────────────────────
-
 function calcProgreso(form: FormCV): number {
-  let pts = 0; let total = 10;
+  let pts = 0;
   if (form.name.trim())    pts++;
   if (form.email.trim())   pts++;
   if (form.phone.trim())   pts++;
@@ -140,10 +122,8 @@ function calcProgreso(form: FormCV): number {
   if (form.educaciones.some(e => e.titulo)) pts++;
   if (form.linkedin.trim() || form.portfolio.trim()) pts++;
   if (form.fotoUrl) pts++;
-  return Math.round((pts / total) * 100);
+  return Math.round((pts / 10) * 100);
 }
-
-// ─── Alertas ATS ──────────────────────────────────────────────────────────────
 
 function AlertasATS({ form }: { form: FormCV }) {
   const alertas: string[] = [];
@@ -156,22 +136,17 @@ function AlertasATS({ form }: { form: FormCV }) {
     <div className="px-4 pt-4 space-y-2">
       {alertas.map((a, i) => (
         <div key={i} className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-400">
-          <ExclamationCircleIcon className="w-4 h-4 shrink-0 mt-0.5" />
-          {a}
+          <ExclamationCircleIcon className="w-4 h-4 shrink-0 mt-0.5" />{a}
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
-
 export default function CVBuilder() {
   const [form,        setForm]        = useState<FormCV>(() => {
-    try {
-      const saved = localStorage.getItem('ag_cv_draft');
-      return saved ? JSON.parse(saved) : FORM_INICIAL;
-    } catch { return FORM_INICIAL; }
+    try { const s = localStorage.getItem('ag_cv_draft'); return s ? JSON.parse(s) : FORM_INICIAL; }
+    catch { return FORM_INICIAL; }
   });
   const [template,    setTemplate]    = useState<PlantillaId>('1');
   const [isMenuOpen,  setIsMenuOpen]  = useState(false);
@@ -179,10 +154,9 @@ export default function CVBuilder() {
   const [error,       setError]       = useState('');
   const [guardado,    setGuardado]    = useState(false);
   const [seccionesSaltadas, setSeccionesSaltadas] = useState<SeccionId[]>([]);
-  const cvRef = useRef<HTMLDivElement>(null);
+  const cvRef   = useRef<HTMLDivElement>(null);
   const fotoRef = useRef<HTMLInputElement>(null);
 
-  // Pre-cargar perfil
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user: User | null) => {
       if (!user) return;
@@ -204,7 +178,6 @@ export default function CVBuilder() {
     return () => unsub();
   }, []);
 
-  // Auto-guardar borrador
   useEffect(() => {
     const t = setTimeout(() => {
       try {
@@ -222,20 +195,15 @@ export default function CVBuilder() {
 
   const saltarSeccion = (id: SeccionId) => {
     setSeccionesSaltadas(prev => [...prev, id]);
-    if (id === 'idiomas')        set('idiomas', []);
+    if (id === 'idiomas')         set('idiomas', []);
     if (id === 'certificaciones') set('certificaciones', []);
-    if (id === 'proyectos')      set('proyectos', []);
-    if (id === 'referencias')    set('referencias', []);
-    if (id === 'voluntariado')   set('voluntariado', '');
+    if (id === 'proyectos')       set('proyectos', []);
+    if (id === 'referencias')     set('referencias', []);
+    if (id === 'voluntariado')    set('voluntariado', '');
   };
-
-  const mostrarSeccion = (id: SeccionId) => {
-    setSeccionesSaltadas(prev => prev.filter(s => s !== id));
-  };
-
+  const mostrarSeccion = (id: SeccionId) => setSeccionesSaltadas(prev => prev.filter(s => s !== id));
   const saltada = (id: SeccionId) => seccionesSaltadas.includes(id);
 
-  // Foto
   const handleFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -244,53 +212,67 @@ export default function CVBuilder() {
     reader.readAsDataURL(file);
   };
 
-  // Experiencias
-  const addExp = () => set('experiencias', [...form.experiencias, { id: uid(), cargo: '', empresa: '', desde: '', hasta: '', descripcion: '' }]);
+  const addExp    = () => set('experiencias', [...form.experiencias, { id: uid(), cargo: '', empresa: '', desde: '', hasta: '', descripcion: '' }]);
   const removeExp = (id: string) => set('experiencias', form.experiencias.filter(e => e.id !== id));
   const updateExp = (id: string, field: keyof Experiencia, val: string) =>
     set('experiencias', form.experiencias.map(e => e.id === id ? { ...e, [field]: val } : e));
 
-  // Educaciones
-  const addEdu = () => set('educaciones', [...form.educaciones, { id: uid(), titulo: '', institucion: '', desde: '', hasta: '' }]);
+  const addEdu    = () => set('educaciones', [...form.educaciones, { id: uid(), titulo: '', institucion: '', desde: '', hasta: '' }]);
   const removeEdu = (id: string) => set('educaciones', form.educaciones.filter(e => e.id !== id));
   const updateEdu = (id: string, field: keyof Educacion, val: string) =>
     set('educaciones', form.educaciones.map(e => e.id === id ? { ...e, [field]: val } : e));
 
-  // Idiomas
-  const addIdioma = () => set('idiomas', [...form.idiomas, { id: uid(), idioma: '', nivel: 'Intermedio' }]);
+  const addIdioma    = () => set('idiomas', [...form.idiomas, { id: uid(), idioma: '', nivel: 'Intermedio' }]);
   const removeIdioma = (id: string) => set('idiomas', form.idiomas.filter(i => i.id !== id));
   const updateIdioma = (id: string, field: keyof Idioma, val: string) =>
     set('idiomas', form.idiomas.map(i => i.id === id ? { ...i, [field]: val } : i));
 
-  // Certificaciones
-  const addCert = () => set('certificaciones', [...form.certificaciones, { id: uid(), nombre: '', institucion: '', anio: '' }]);
+  const addCert    = () => set('certificaciones', [...form.certificaciones, { id: uid(), nombre: '', institucion: '', anio: '' }]);
   const removeCert = (id: string) => set('certificaciones', form.certificaciones.filter(c => c.id !== id));
   const updateCert = (id: string, field: keyof Certificacion, val: string) =>
     set('certificaciones', form.certificaciones.map(c => c.id === id ? { ...c, [field]: val } : c));
 
-  // Proyectos
-  const addProyecto = () => set('proyectos', [...form.proyectos, { id: uid(), nombre: '', descripcion: '', url: '' }]);
+  const addProyecto    = () => set('proyectos', [...form.proyectos, { id: uid(), nombre: '', descripcion: '', url: '' }]);
   const removeProyecto = (id: string) => set('proyectos', form.proyectos.filter(p => p.id !== id));
   const updateProyecto = (id: string, field: keyof Proyecto, val: string) =>
     set('proyectos', form.proyectos.map(p => p.id === id ? { ...p, [field]: val } : p));
 
-  // Referencias
-  const addRef = () => set('referencias', [...form.referencias, { id: uid(), nombre: '', cargo: '', empresa: '', telefono: '' }]);
+  const addRef    = () => set('referencias', [...form.referencias, { id: uid(), nombre: '', cargo: '', empresa: '', telefono: '' }]);
   const removeRef = (id: string) => set('referencias', form.referencias.filter(r => r.id !== id));
   const updateRef = (id: string, field: keyof Referencia, val: string) =>
     set('referencias', form.referencias.map(r => r.id === id ? { ...r, [field]: val } : r));
 
-  // Descargar PDF
   const handleDescargar = async () => {
     if (!cvRef.current) return;
     if (!form.name.trim()) { setError('Completá al menos tu nombre.'); return; }
     setDescargando(true); setError('');
+
+    // Fix CORS: convertir foto externa a base64 antes de html2canvas
+    if (form.fotoUrl && form.fotoUrl.startsWith('http')) {
+      try {
+        const response = await fetch(
+          `https://images.weserv.nl/?url=${encodeURIComponent(form.fotoUrl)}&w=200&h=200&fit=cover`
+        );
+        const blob     = await response.blob();
+        const base64   = await new Promise<string>((res) => {
+          const reader = new FileReader();
+          reader.onload = () => res(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+        setForm(prev => ({ ...prev, fotoUrl: base64 }));
+        await new Promise(r => setTimeout(r, 300));
+      } catch {
+        setForm(prev => ({ ...prev, fotoUrl: '' }));
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
     try {
-      const canvas = await html2canvas(cvRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+      const canvas  = await html2canvas(cvRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const w = pdf.internal.pageSize.getWidth();
-      const h = (canvas.height * w) / canvas.width;
+      const pdf     = new jsPDF('p', 'mm', 'a4');
+      const w       = pdf.internal.pageSize.getWidth();
+      const h       = (canvas.height * w) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, w, h);
       pdf.save(`CV_${form.name.trim().replace(/\s+/g, '_')}.pdf`);
     } catch (e) {
@@ -299,16 +281,13 @@ export default function CVBuilder() {
     } finally { setDescargando(false); }
   };
 
-  const progreso = calcProgreso(form);
+  const progreso   = calcProgreso(form);
   const skillsList = form.skills.split(',').map(s => s.trim()).filter(Boolean);
-
-  const inputCls = "w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-white rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-colors";
+  const inputCls   = "w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-white rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-colors";
   const textareaCls = inputCls + " resize-none";
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-
-      {/* Header */}
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-5 py-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
@@ -321,17 +300,12 @@ export default function CVBuilder() {
             </div>
           )}
         </div>
-
-        {/* Barra de progreso */}
         <div className="mt-3">
           <div className="flex justify-between text-xs text-gray-400 mb-1">
             <span>Completado</span><span>{progreso}%</span>
           </div>
           <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-[--sc-500] rounded-full transition-all duration-500"
-              style={{ width: `${progreso}%` }}
-            />
+            <div className="h-full bg-[--sc-500] rounded-full transition-all duration-500" style={{ width: `${progreso}%` }} />
           </div>
         </div>
       </header>
@@ -357,9 +331,7 @@ export default function CVBuilder() {
               </button>
               {form.fotoUrl && (
                 <button type="button" onClick={() => set('fotoUrl', '')}
-                  className="block text-xs text-red-400 underline">
-                  Quitar foto
-                </button>
+                  className="block text-xs text-red-400 underline">Quitar foto</button>
               )}
               <p className="text-xs text-gray-400">JPG o PNG. Opcional pero recomendada.</p>
             </div>
@@ -370,14 +342,14 @@ export default function CVBuilder() {
         {/* Datos personales */}
         <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
           <h2 className="font-black text-gray-800 dark:text-white text-sm">Datos personales</h2>
-          {[
-            { name: 'name' as const, label: 'Nombre completo', placeholder: 'Ej: Juan Pérez', type: 'text' },
-            { name: 'email' as const, label: 'Email', placeholder: 'Ej: juan.perez@gmail.com', type: 'email' },
-            { name: 'phone' as const, label: 'Teléfono', placeholder: 'Ej: +54 11 1234-5678', type: 'tel' },
-            { name: 'ciudad' as const, label: 'Ciudad', placeholder: 'Ej: Buenos Aires', type: 'text' },
-            { name: 'linkedin' as const, label: 'LinkedIn (opcional)', placeholder: 'linkedin.com/in/tu-perfil', type: 'url' },
-            { name: 'portfolio' as const, label: 'Portfolio / GitHub (opcional)', placeholder: 'github.com/tu-usuario', type: 'url' },
-          ].map(f => (
+          {([
+            { name: 'name'      as const, label: 'Nombre completo',              placeholder: 'Ej: Juan Pérez',              type: 'text'  },
+            { name: 'email'     as const, label: 'Email',                        placeholder: 'Ej: juan.perez@gmail.com',    type: 'email' },
+            { name: 'phone'     as const, label: 'Teléfono',                     placeholder: 'Ej: +54 11 1234-5678',        type: 'tel'   },
+            { name: 'ciudad'    as const, label: 'Ciudad',                       placeholder: 'Ej: Buenos Aires',            type: 'text'  },
+            { name: 'linkedin'  as const, label: 'LinkedIn (opcional)',           placeholder: 'linkedin.com/in/tu-perfil',  type: 'url'   },
+            { name: 'portfolio' as const, label: 'Portfolio / GitHub (opcional)', placeholder: 'github.com/tu-usuario',      type: 'url'   },
+          ]).map(f => (
             <div key={f.name}>
               <FieldLabel label={f.label} campo={f.name} />
               <input type={f.type} placeholder={f.placeholder} value={form[f.name] as string}
@@ -389,7 +361,7 @@ export default function CVBuilder() {
         {/* Resumen */}
         <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5">
           <FieldLabel label="Resumen profesional" campo="summary" />
-          <textarea placeholder="Ej: Vendedor con 3 años de experiencia en retail. Especializado en atención al cliente y cumplimiento de objetivos de ventas. Busco crecer en una empresa con proyección." value={form.summary}
+          <textarea placeholder="Ej: Vendedor con 3 años de experiencia en retail..." value={form.summary}
             onChange={e => set('summary', e.target.value)} rows={4} className={textareaCls} />
           <p className="text-xs text-gray-400 mt-1">{form.summary.length}/500 caracteres</p>
         </div>
@@ -397,18 +369,16 @@ export default function CVBuilder() {
         {/* Habilidades */}
         <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5">
           <FieldLabel label="Habilidades" campo="skills" />
-          <textarea placeholder="Ej: Excel, Atención al cliente, Trabajo en equipo, Manejo de caja, Redes sociales" value={form.skills}
+          <textarea placeholder="Ej: Excel, Atención al cliente, Trabajo en equipo" value={form.skills}
             onChange={e => set('skills', e.target.value)} rows={3} className={textareaCls} />
           <p className="text-xs text-gray-400 mt-1">Separalas por coma</p>
         </div>
 
         {/* Experiencia */}
         <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <h2 className="font-black text-gray-800 dark:text-white text-sm">Experiencia laboral</h2>
-              <Tooltip campo="experiencias" />
-            </div>
+          <div className="flex items-center">
+            <h2 className="font-black text-gray-800 dark:text-white text-sm">Experiencia laboral</h2>
+            <Tooltip campo="experiencias" />
           </div>
           {form.experiencias.map((exp, i) => (
             <div key={exp.id} className="border border-gray-100 dark:border-gray-700 rounded-2xl p-4 space-y-3">
@@ -424,7 +394,7 @@ export default function CVBuilder() {
                 <input placeholder="Desde (ej: 2022)" value={exp.desde} onChange={e => updateExp(exp.id, 'desde', e.target.value)} className={inputCls} />
                 <input placeholder="Hasta (ej: 2024 o Actual)" value={exp.hasta} onChange={e => updateExp(exp.id, 'hasta', e.target.value)} className={inputCls} />
               </div>
-              <textarea placeholder="Describí brevemente tus tareas y logros. Ej: Atención al público, manejo de caja, cumplimiento de metas mensuales." value={exp.descripcion}
+              <textarea placeholder="Describí brevemente tus tareas y logros." value={exp.descripcion}
                 onChange={e => updateExp(exp.id, 'descripcion', e.target.value)} rows={3} className={textareaCls} />
             </div>
           ))}
@@ -464,10 +434,7 @@ export default function CVBuilder() {
 
         {/* Idiomas */}
         {saltada('idiomas') ? (
-          <button type="button" onClick={() => mostrarSeccion('idiomas')}
-            className="text-xs text-[--sc-600] underline px-4">
-            + Agregar idiomas
-          </button>
+          <button type="button" onClick={() => mostrarSeccion('idiomas')} className="text-xs text-[--sc-600] underline px-4">+ Agregar idiomas</button>
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -496,8 +463,7 @@ export default function CVBuilder() {
 
         {/* Certificaciones */}
         {saltada('certificaciones') ? (
-          <button type="button" onClick={() => mostrarSeccion('certificaciones')}
-            className="text-xs text-[--sc-600] underline px-4">+ Agregar certificaciones</button>
+          <button type="button" onClick={() => mostrarSeccion('certificaciones')} className="text-xs text-[--sc-600] underline px-4">+ Agregar certificaciones</button>
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -529,8 +495,7 @@ export default function CVBuilder() {
 
         {/* Proyectos */}
         {saltada('proyectos') ? (
-          <button type="button" onClick={() => mostrarSeccion('proyectos')}
-            className="text-xs text-[--sc-600] underline px-4">+ Agregar proyectos</button>
+          <button type="button" onClick={() => mostrarSeccion('proyectos')} className="text-xs text-[--sc-600] underline px-4">+ Agregar proyectos</button>
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -547,7 +512,7 @@ export default function CVBuilder() {
                   <button type="button" onClick={() => removeProyecto(p.id)}><TrashIcon className="w-4 h-4 text-red-400" /></button>
                 </div>
                 <input placeholder="Nombre del proyecto" value={p.nombre} onChange={e => updateProyecto(p.id, 'nombre', e.target.value)} className={inputCls} />
-                <textarea placeholder="Descripción breve — qué hiciste y qué tecnologías usaste" value={p.descripcion}
+                <textarea placeholder="Descripción breve" value={p.descripcion}
                   onChange={e => updateProyecto(p.id, 'descripcion', e.target.value)} rows={2} className={textareaCls} />
                 <input placeholder="URL (opcional)" value={p.url} onChange={e => updateProyecto(p.id, 'url', e.target.value)} className={inputCls} />
               </div>
@@ -561,8 +526,7 @@ export default function CVBuilder() {
 
         {/* Voluntariado */}
         {saltada('voluntariado') ? (
-          <button type="button" onClick={() => mostrarSeccion('voluntariado')}
-            className="text-xs text-[--sc-600] underline px-4">+ Agregar voluntariado</button>
+          <button type="button" onClick={() => mostrarSeccion('voluntariado')} className="text-xs text-[--sc-600] underline px-4">+ Agregar voluntariado</button>
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5">
             <div className="flex items-center justify-between mb-2">
@@ -572,15 +536,14 @@ export default function CVBuilder() {
               </div>
               <SkipButton onSkip={() => saltarSeccion('voluntariado')} />
             </div>
-            <textarea placeholder="Ej: 2023 — Voluntario en Cruz Roja Argentina. Apoyo en campañas de donación de sangre." value={form.voluntariado}
+            <textarea placeholder="Ej: 2023 — Voluntario en Cruz Roja Argentina." value={form.voluntariado}
               onChange={e => set('voluntariado', e.target.value)} rows={3} className={textareaCls} />
           </div>
         )}
 
         {/* Referencias */}
         {saltada('referencias') ? (
-          <button type="button" onClick={() => mostrarSeccion('referencias')}
-            className="text-xs text-[--sc-600] underline px-4">+ Agregar referencias</button>
+          <button type="button" onClick={() => mostrarSeccion('referencias')} className="text-xs text-[--sc-600] underline px-4">+ Agregar referencias</button>
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -630,10 +593,9 @@ export default function CVBuilder() {
 
         {/* Vista previa */}
         <div>
-          <p className="text-sm font-bold text-gray-700 dark:text-white mb-3 px-0">Vista previa:</p>
+          <p className="text-sm font-bold text-gray-700 dark:text-white mb-3">Vista previa:</p>
           <div ref={cvRef} className="bg-white rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
 
-            {/* Plantilla 1: Clásico */}
             {template === '1' && (
               <div>
                 <div className="bg-blue-700 px-6 py-5 text-white flex items-center gap-4">
@@ -641,9 +603,7 @@ export default function CVBuilder() {
                   <div>
                     <h2 className="text-xl font-black">{form.name || 'Tu Nombre'}</h2>
                     <p className="text-blue-200 text-xs mt-0.5">{[form.email, form.phone, form.ciudad].filter(Boolean).join(' · ')}</p>
-                    {(form.linkedin || form.portfolio) && (
-                      <p className="text-blue-200 text-xs">{[form.linkedin, form.portfolio].filter(Boolean).join(' · ')}</p>
-                    )}
+                    {(form.linkedin || form.portfolio) && <p className="text-blue-200 text-xs">{[form.linkedin, form.portfolio].filter(Boolean).join(' · ')}</p>}
                   </div>
                 </div>
                 <div className="p-5 space-y-4">
@@ -722,7 +682,6 @@ export default function CVBuilder() {
               </div>
             )}
 
-            {/* Plantilla 2: Moderno */}
             {template === '2' && (
               <div className="flex">
                 <div className="w-2/5 bg-purple-700 p-4 text-white">
@@ -786,7 +745,6 @@ export default function CVBuilder() {
               </div>
             )}
 
-            {/* Plantilla 3: Minimalista */}
             {template === '3' && (
               <div className="p-6 font-serif">
                 <div className="flex items-center gap-4 border-b-2 border-gray-800 pb-3 mb-4">
@@ -832,7 +790,6 @@ export default function CVBuilder() {
               </div>
             )}
 
-            {/* Plantilla 4: ATS Pro */}
             {template === '4' && (
               <div className="p-5 font-mono text-xs">
                 <div className="flex items-start gap-3 mb-3">
@@ -919,14 +876,12 @@ export default function CVBuilder() {
           </div>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="flex items-center gap-2 p-3 bg-red-50 rounded-2xl text-red-600 text-sm" role="alert">
             <ExclamationCircleIcon className="w-5 h-5 shrink-0" />{error}
           </div>
         )}
 
-        {/* Botones */}
         <div className="space-y-3">
           <button onClick={handleDescargar} disabled={descargando}
             className="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-4 rounded-2xl font-black text-base shadow-lg active:scale-95 transition-transform disabled:opacity-60">
@@ -938,11 +893,10 @@ export default function CVBuilder() {
             Limpiar y empezar de nuevo
           </button>
         </div>
-
       </div>
 
       <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-                          }
+    }
