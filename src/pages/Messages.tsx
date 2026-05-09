@@ -1,434 +1,194 @@
-// src/components/Stories.tsx
-import { useState, useEffect, useRef } from 'react';
+// src/pages/Messages.tsx
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../app/firebase';
 import {
-  collection, addDoc, query, orderBy, onSnapshot,
-  serverTimestamp, where, doc, updateDoc, arrayUnion, getDoc, setDoc,
+  collection, query, where, orderBy, onSnapshot, deleteDoc, doc,
 } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
-import { subirArchivoCloudinary } from '../utils/cloudinary';
-import { PlusIcon, XMarkIcon, PaperAirplaneIcon, EyeIcon } from '@heroicons/react/24/outline';
+import {
+  ChatBubbleLeftRightIcon, ArrowLeftIcon,
+  MagnifyingGlassIcon, TrashIcon,
+} from '@heroicons/react/24/outline';
+import Navbar from '../components/Navbar';
+import Menu from '../components/Menu';
 
-interface Story {
-  id:        string;
-  userId:    string;
-  userName:  string;
-  userPhoto: string;
-  mediaUrl:  string;
-  mediaType: 'image' | 'video';
-  createdAt: { toDate: () => Date } | null;
-  vistos:    string[];
-  reacciones: Record<string, string>;
+interface ChatPreview {
+  id:              string;
+  participants:    string[];
+  participantData: Record<string, { name: string; photo: string }>;
+  lastMessage:     string;
+  lastMessageAt:   { toDate: () => Date } | null;
+  unreadBy:        string[];
 }
 
-interface StoryGroup {
-  userId:    string;
-  userName:  string;
-  userPhoto: string;
-  stories:   Story[];
-  visto:     boolean;
+function formatTime(ts: { toDate: () => Date } | null): string {
+  if (!ts || typeof ts.toDate !== 'function') return '';
+  try {
+    const d   = ts.toDate();
+    const now = new Date();
+    const isToday =
+      d.getDate()     === now.getDate()  &&
+      d.getMonth()    === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
+    return isToday
+      ? d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+  } catch { return ''; }
 }
 
-const MAX_MB          = 50;
-const STORY_EXPIRE_MS = 12 * 60 * 60 * 1000;
-const REACCIONES_RAPIDAS = ['❤️', '😂', '😍', '👏', '😲'];
-
-function VisorStory({ grupo, onClose }: { grupo: StoryGroup; onClose: () => void }) {
-  const user     = auth.currentUser;
+export default function Messages() {
   const navigate = useNavigate();
+  const me       = auth.currentUser;
 
-  const [idx,           setIdx]           = useState(0);
-  const [progreso,      setProgreso]      = useState(0);
-  const [pausado,       setPausado]       = useState(false);
-  const [mostrarVistos, setMostrarVistos] = useState(false);
-  const [respuesta,     setRespuesta]     = useState('');
-  const [enviando,      setEnviando]      = useState(false);
-  const [reaccionando,  setReaccionando]  = useState(false);
-
-  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const story     = grupo.stories[idx];
-  const esMia     = story?.userId === user?.uid;
-  const DURACION  = story?.mediaType === 'video' ? 15000 : 5000;
+  const [chats,       setChats]       = useState<ChatPreview[]>([]);
+  const [cargando,    setCargando]    = useState(true);
+  const [isMenuOpen,  setIsMenuOpen]  = useState(false);
+  const [busqueda,    setBusqueda]    = useState('');
+  const [eliminandoId,setEliminandoId]= useState<string | null>(null);
 
   useEffect(() => {
-    if (user && story && !esMia && !story.vistos?.includes(user.uid)) {
-      updateDoc(doc(db, 'stories', story.id), {
-        vistos: arrayUnion(user.uid),
-      }).catch(() => {});
-    }
-  }, [story?.id]);
+    if (!me) return;
+    const q = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', me.uid),
+      orderBy('lastMessageAt', 'desc'),
+    );
+    const unsub = onSnapshot(q,
+      (snap) => {
+        setChats(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatPreview)));
+        setCargando(false);
+      },
+      (err) => { console.error('[Messages]', err); setCargando(false); }
+    );
+    return () => unsub();
+  }, [me]);
 
-  useEffect(() => {
-    if (pausado) return;
-    setProgreso(0);
-    const start = Date.now();
-    timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const p = Math.min((elapsed / DURACION) * 100, 100);
-      setProgreso(p);
-      if (p >= 100) {
-        clearInterval(timerRef.current!);
-        if (idx < grupo.stories.length - 1) setIdx((i) => i + 1);
-        else onClose();
-      }
-    }, 50);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [idx, pausado]);
-
-  useEffect(() => {
-    if (mostrarVistos || reaccionando || respuesta) {
-      setPausado(true);
-      if (timerRef.current) clearInterval(timerRef.current);
-    } else {
-      setPausado(false);
-    }
-  }, [mostrarVistos, reaccionando, respuesta]);
-
-  async function handleReaccion(emoji: string) {
-    if (!user || !story) return;
-    setReaccionando(false);
-    try {
-      await updateDoc(doc(db, 'stories', story.id), {
-        [`reacciones.${user.uid}`]: emoji,
-      });
-      await addDoc(collection(db, 'notifications'), {
-        uid:      story.userId,
-        titulo:   `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu historia`,
-        mensaje:  emoji,
-        tipo:     'reaccion',
-        leida:    false,
-        creadoEn: serverTimestamp(),
-      });
-    } catch (e) { console.error('[Stories] reacción:', e); }
+  async function handleEliminar(chatId: string) {
+    setEliminandoId(null);
+    try { await deleteDoc(doc(db, 'chats', chatId)); }
+    catch (e) { console.error('[Messages] eliminar:', e); }
   }
 
-  async function handleResponder() {
-    if (!user || !respuesta.trim() || !story) return;
-    setEnviando(true);
-    try {
-      const chatId  = [user.uid, story.userId].sort().join('_');
-      const chatRef = doc(db, 'chats', chatId);
-      const chatSnap = await getDoc(chatRef);
-      const msg = `↩️ Historia: "${respuesta.trim()}"`;
-
-      if (!chatSnap.exists()) {
-        const [meSnap, otherSnap] = await Promise.all([
-          getDoc(doc(db, 'users', user.uid)),
-          getDoc(doc(db, 'users', story.userId)),
-        ]);
-        const meData    = meSnap.exists()    ? meSnap.data()    : {};
-        const otherData = otherSnap.exists() ? otherSnap.data() : {};
-        await setDoc(chatRef, {
-          participants: [user.uid, story.userId].sort(),
-          participantData: {
-            [user.uid]:    { name: meData.name    || user.displayName || 'Yo',      photo: meData.photo    || user.photoURL || '' },
-            [story.userId]: { name: otherData.name || story.userName   || 'Usuario', photo: otherData.photo || story.userPhoto || '' },
-          },
-          lastMessage:    msg,
-          lastMessageAt:  serverTimestamp(),
-          unreadBy:       [story.userId],
-        });
-      } else {
-        await updateDoc(chatRef, {
-          lastMessage:   msg,
-          lastMessageAt: serverTimestamp(),
-          unreadBy:      [story.userId],
-        });
-      }
-
-      await addDoc(collection(db, 'chats', chatId, 'messages'), {
-        senderId:  user.uid,
-        text:      msg,
-        createdAt: serverTimestamp(),
-      });
-
-      await addDoc(collection(db, 'notifications'), {
-        uid:      story.userId,
-        titulo:   `💬 ${user.displayName ?? 'Alguien'} respondió tu historia`,
-        mensaje:  respuesta.trim().slice(0, 80),
-        tipo:     'mensaje',
-        leida:    false,
-        creadoEn: serverTimestamp(),
-      });
-
-      setRespuesta('');
-      navigate(`/chat/${chatId}`);
-    } catch (e) { console.error('[Stories] responder:', e); }
-    finally { setEnviando(false); }
-  }
-
-  if (!story) return null;
-
-  const miReaccion = story.reacciones?.[user?.uid ?? ''];
-  const totalVistos = story.vistos?.length ?? 0;
-
-  return (
-    <div className="fixed inset-0 z-[300] bg-black flex flex-col">
-      {/* Barras progreso */}
-      <div className="absolute top-4 left-3 right-3 flex gap-1 z-10">
-        {grupo.stories.map((_, i) => (
-          <div key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-white rounded-full transition-none"
-              style={{ width: `${i < idx ? 100 : i === idx ? progreso : 0}%` }}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* Header */}
-      <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-10">
-        <div className="flex items-center gap-2">
-          <img
-            src={grupo.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(grupo.userName)}&background=7c3aed&color=fff`}
-            alt={grupo.userName}
-            className="w-9 h-9 rounded-full object-cover ring-2 ring-white"
-          />
-          <div>
-            <p className="text-white font-black text-sm drop-shadow">{grupo.userName}</p>
-            <p className="text-white/60 text-xs">
-              {story.createdAt?.toDate().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {esMia && (
-            <button
-              onClick={() => setMostrarVistos(true)}
-              className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1"
-            >
-              <EyeIcon className="w-4 h-4 text-white" />
-              <span className="text-white text-xs font-bold">{totalVistos}</span>
-            </button>
-          )}
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
-            <XMarkIcon className="w-5 h-5 text-white" />
-          </button>
-        </div>
-      </div>
-
-      {/* Media */}
-      {story.mediaType === 'video' ? (
-        <video src={story.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover" />
-      ) : (
-        <img src={story.mediaUrl} alt="story" className="w-full h-full object-cover" />
-      )}
-
-      {/* Tap zonas */}
-      <div className="absolute inset-0 flex" style={{ bottom: '120px' }}>
-        <div className="flex-1" onClick={() => setIdx((i) => Math.max(0, i - 1))} />
-        <div className="flex-1" onClick={() => {
-          if (idx < grupo.stories.length - 1) setIdx((i) => i + 1);
-          else onClose();
-        }} />
-      </div>
-
-      {/* Bottom: reacciones + respuesta */}
-      {!esMia && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-8 space-y-3">
-          {/* Reacciones rápidas */}
-          <div className="flex justify-center gap-3">
-            {REACCIONES_RAPIDAS.map((emoji) => (
-              <button
-                key={emoji}
-                onClick={() => handleReaccion(emoji)}
-                className={`text-2xl transition-transform active:scale-125 ${miReaccion === emoji ? 'scale-125' : ''}`}
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-          {/* Input respuesta */}
-          <div className="flex gap-2 items-center">
-            <input
-              value={respuesta}
-              onChange={(e) => setRespuesta(e.target.value)}
-              onFocus={() => setPausado(true)}
-              onBlur={() => { if (!respuesta) setPausado(false); }}
-              onKeyDown={(e) => e.key === 'Enter' && handleResponder()}
-              placeholder="Responder historia..."
-              maxLength={200}
-              className="flex-1 bg-white/20 backdrop-blur rounded-full px-4 py-2.5 text-white placeholder-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
-            />
-            {respuesta.trim() && (
-              <button
-                onClick={handleResponder}
-                disabled={enviando}
-                className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50"
-              >
-                <PaperAirplaneIcon className="w-5 h-5 text-white" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal vistos */}
-      {mostrarVistos && esMia && (
-        <div
-          className="fixed inset-0 z-[400] flex items-end justify-center bg-black/60"
-          onClick={(e) => e.target === e.currentTarget && setMostrarVistos(false)}
-        >
-          <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-3" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-black text-white flex items-center gap-2">
-                <EyeIcon className="w-5 h-5" /> Visto por {totalVistos}
-              </h3>
-              <button onClick={() => setMostrarVistos(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
-                <XMarkIcon className="w-5 h-5 text-gray-400" />
-              </button>
-            </div>
-            {/* Reacciones recibidas */}
-            {Object.entries(story.reacciones || {}).length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Reacciones</p>
-                {Object.entries(story.reacciones || {}).map(([uid, emoji]) => (
-                  <div key={uid} className="flex items-center justify-between py-2 border-b border-gray-800">
-                    <span className="text-gray-300 text-sm">{uid === user?.uid ? 'Vos' : uid.slice(0, 8) + '...'}</span>
-                    <span className="text-2xl">{emoji}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {totalVistos === 0 && (
-              <div className="text-center py-8 text-gray-600">
-                <p className="text-3xl mb-2">👁️</p>
-                <p className="text-sm font-bold">Nadie vio esta historia aún</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-    }export default function Stories() {
-  const user = auth.currentUser;
-
-  const [stories,     setStories]     = useState<Story[]>([]);
-  const [subiendo,    setSubiendo]    = useState(false);
-  const [viendoGrupo, setViendoGrupo] = useState<StoryGroup | null>(null);
-  const [vistos,      setVistos]      = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('ag_stories_vistos');
-      return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch { return new Set(); }
+  const chatsFiltrados = chats.filter((chat) => {
+    if (!busqueda.trim()) return true;
+    const otherUid = chat.participants.find((p) => p !== me?.uid) ?? '';
+    const other    = chat.participantData?.[otherUid];
+    return other?.name?.toLowerCase().includes(busqueda.toLowerCase());
   });
 
-  useEffect(() => {
-    const corte = new Date(Date.now() - STORY_EXPIRE_MS);
-    const q = query(
-      collection(db, 'stories'),
-      where('createdAt', '>=', corte),
-      orderBy('createdAt', 'desc')
-    );
-    return onSnapshot(q, (snap) =>
-      setStories(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Story)))
-    );
-  }, []);
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f || !user) return;
-    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) return;
-    if (f.size > MAX_MB * 1024 * 1024) return;
-    setSubiendo(true);
-    try {
-      const { url: mediaUrl, tipo: mediaType } = await subirArchivoCloudinary(f);
-      await addDoc(collection(db, 'stories'), {
-        userId:     user.uid,
-        userName:   user.displayName ?? 'Usuario',
-        userPhoto:  user.photoURL    ?? '',
-        mediaUrl,
-        mediaType,
-        vistos:     [],
-        reacciones: {},
-        createdAt:  serverTimestamp(),
-      });
-    } catch (e) { console.error('[Stories] upload error:', e); }
-    finally { setSubiendo(false); }
-  }
-
-  function abrirGrupo(grupo: StoryGroup) {
-    setViendoGrupo(grupo);
-    const nuevos = new Set(vistos);
-    nuevos.add(grupo.userId);
-    setVistos(nuevos);
-    try { localStorage.setItem('ag_stories_vistos', JSON.stringify([...nuevos])); } catch {}
-  }
-
-  const grupos = Object.values(
-    stories.reduce<Record<string, StoryGroup>>((acc, s) => {
-      if (!acc[s.userId]) {
-        acc[s.userId] = {
-          userId:    s.userId,
-          userName:  s.userName,
-          userPhoto: s.userPhoto,
-          stories:   [],
-          visto:     vistos.has(s.userId),
-        };
-      }
-      acc[s.userId].stories.push(s);
-      return acc;
-    }, {})
-  ).sort((a, b) => Number(a.visto) - Number(b.visto));
-
-  const miStory = grupos.find((g) => g.userId === user?.uid);
-
   return (
-    <>
-      <div className="flex gap-3 overflow-x-auto pb-2 px-1 scrollbar-none">
-        <div className="flex flex-col items-center gap-1 shrink-0">
-          <label className={`relative w-16 h-16 rounded-full cursor-pointer ${subiendo ? 'opacity-60' : ''}`}>
-            <img
-              src={user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.displayName || 'U')}&background=7c3aed&color=fff`}
-              alt="Mi story"
-              className={`w-16 h-16 rounded-full object-cover ${
-                miStory ? 'ring-2 ring-purple-500 ring-offset-2' : 'ring-2 ring-gray-200 dark:ring-gray-700 ring-offset-2'
-              }`}
-            />
-            <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center ring-2 ring-white dark:ring-gray-900">
-              {subiendo
-                ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <PlusIcon className="w-3 h-3 text-white" strokeWidth={3} />
-              }
-            </div>
-            <input type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" disabled={subiendo} />
-          </label>
-          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold">Tu historia</span>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
+      <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-4 py-4 shadow-sm space-y-3">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)}
+            className="p-2 rounded-full bg-gray-100 dark:bg-gray-800 active:scale-90 transition-transform">
+            <ArrowLeftIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+          </button>
+          <h1 className="font-black text-gray-900 dark:text-white text-lg flex-1">Mensajes</h1>
+          {chats.length > 0 && (
+            <span className="text-xs text-gray-400 font-bold">{chats.length} chat{chats.length !== 1 ? 's' : ''}</span>
+          )}
         </div>
-
-        {grupos.filter((g) => g.userId !== user?.uid).map((g) => (
-          <div
-            key={g.userId}
-            className="flex flex-col items-center gap-1 shrink-0 cursor-pointer"
-            onClick={() => abrirGrupo(g)}
-          >
-            <img
-              src={g.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(g.userName)}&background=7c3aed&color=fff`}
-              alt={g.userName}
-              className={`w-16 h-16 rounded-full object-cover ring-2 ring-offset-2 ${
-                g.visto ? 'ring-gray-300 dark:ring-gray-600' : 'ring-purple-500'
-              }`}
+        {chats.length > 0 && (
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar conversación..."
+              className="w-full pl-9 pr-4 py-2.5 bg-gray-100 dark:bg-gray-800 rounded-2xl text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
             />
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold max-w-[64px] truncate">
-              {g.userName.split(' ')[0]}
-            </span>
           </div>
-        ))}
-
-        {/* Mi historia — también abrir visor */}
-        {miStory && (
-          <div
-            className="absolute"
-            style={{ display: 'none' }}
-            onClick={() => abrirGrupo(miStory)}
-          />
         )}
+      </header>
+
+      {cargando && (
+        <div className="flex justify-center py-16">
+          <div className="w-7 h-7 border-4 border-[var(--sc-500)] border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {!cargando && chats.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-24 px-8 text-center">
+          <ChatBubbleLeftRightIcon className="w-16 h-16 text-gray-300 dark:text-gray-700 mb-4" />
+          <p className="font-black text-lg text-gray-500 dark:text-gray-400">Sin mensajes</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
+            Buscá personas y enviáles un mensaje desde su perfil
+          </p>
+        </div>
+      )}
+
+      {!cargando && chats.length > 0 && chatsFiltrados.length === 0 && (
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-3xl mb-2">🔍</p>
+          <p className="font-bold">Sin resultados para "{busqueda}"</p>
+        </div>
+      )}
+
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        {chatsFiltrados.map((chat) => {
+          const otherUid  = chat.participants.find((p) => p !== me?.uid) ?? '';
+          const other     = chat.participantData?.[otherUid] ?? { name: 'Usuario', photo: '' };
+          const avatar    = other.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(other.name)}&background=7c3aed&color=fff`;
+          const hasUnread = chat.unreadBy?.includes(me?.uid ?? '');
+          const timeLabel = formatTime(chat.lastMessageAt);
+          const eliminando = eliminandoId === chat.id;
+
+          return (
+            <div key={chat.id} className="relative">
+              <button
+                onClick={() => eliminando ? setEliminandoId(null) : navigate(`/chat/${chat.id}`)}
+                className="w-full flex items-center gap-4 px-4 py-4 bg-white dark:bg-gray-900 active:bg-gray-50 dark:active:bg-gray-800 transition-colors text-left"
+              >
+                <div className="relative shrink-0">
+                  <img src={avatar} alt={other.name} className="w-14 h-14 rounded-full object-cover" />
+                  {hasUnread && (
+                    <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-[var(--sc-500)] rounded-full border-2 border-white dark:border-gray-900" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm truncate ${hasUnread ? 'font-black text-gray-900 dark:text-white' : 'font-bold text-gray-700 dark:text-gray-300'}`}>
+                    {other.name}
+                  </p>
+                  <p className={`text-xs truncate mt-0.5 ${hasUnread ? 'font-semibold text-gray-700 dark:text-gray-200' : 'text-gray-400'}`}>
+                    {chat.lastMessage || '...'}
+                  </p>
+                </div>
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  {timeLabel && <span className="text-[10px] text-gray-400">{timeLabel}</span>}
+                  {hasUnread && <span className="w-2 h-2 rounded-full bg-[var(--sc-500)]" />}
+                </div>
+              </button>
+
+              {/* Botón eliminar deslizando o long-press */}
+              <button
+                onClick={() => setEliminandoId(eliminando ? null : chat.id)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-gray-100 dark:bg-gray-800 active:scale-90 transition-transform"
+                aria-label="Eliminar chat"
+              >
+                <TrashIcon className="w-4 h-4 text-gray-400" />
+              </button>
+
+              {/* Confirmación eliminar */}
+              {eliminando && (
+                <div className="mx-4 mb-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-2xl flex items-center justify-between">
+                  <p className="text-xs text-red-700 dark:text-red-300 font-bold">¿Eliminar esta conversación?</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEliminar(chat.id)}
+                      className="text-xs bg-red-500 text-white px-3 py-1 rounded-full font-bold active:scale-95">Sí</button>
+                    <button onClick={() => setEliminandoId(null)}
+                      className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full font-bold active:scale-95">No</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {viendoGrupo && (
-        <VisorStory grupo={viendoGrupo} onClose={() => setViendoGrupo(null)} />
-      )}
-    </>
+      <Navbar onMenuClick={() => setIsMenuOpen(true)} />
+      <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
+    </div>
   );
-}
+                  }
