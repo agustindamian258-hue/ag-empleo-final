@@ -4,14 +4,14 @@ import { db, auth } from '../app/firebase';
 import {
   collection, addDoc, query, orderBy, onSnapshot,
   doc, updateDoc, serverTimestamp, getDoc, arrayUnion, arrayRemove,
-  limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData,
+  limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData, deleteDoc,
 } from 'firebase/firestore';
 import { subirArchivoCloudinary } from '../utils/cloudinary';
 import {
   PlusIcon, XMarkIcon, ArrowUpTrayIcon,
   ExclamationCircleIcon, ChatBubbleOvalLeftIcon,
   ShareIcon, PaperAirplaneIcon, FaceSmileIcon,
-  HeartIcon as HeartOutline,
+  HeartIcon as HeartOutline, TrashIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import Navbar from '../components/Navbar';
@@ -63,8 +63,7 @@ function SelectorReaccionReel({ onSelect }: { onSelect: (emoji: string) => void 
         <button key={e} onClick={() => onSelect(e)} className="text-2xl active:scale-125 transition-transform">{e}</button>
       ))}
       {custom ? (
-        <input
-          autoFocus value={input}
+        <input autoFocus value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) { onSelect(input.trim()); setInput(''); setCustom(false); } }}
           placeholder="😀"
@@ -112,14 +111,12 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
     if (!user) return;
     const ref   = doc(db, 'reels', reelId, 'comments', comment.id);
     const liked = comment.likes?.includes(user.uid);
-    try {
-      await updateDoc(ref, { likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
-      if (!liked) await crearNotificacion({
-        uid: comment.userId,
-        titulo: `❤️ ${user.displayName ?? 'Alguien'} le gustó tu comentario`,
-        mensaje: comment.text.slice(0, 60), tipo: 'like',
-      });
-    } catch (e) { console.error('[Reels] like comentario:', e); }
+    await updateDoc(ref, { likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
+    if (!liked) await crearNotificacion({
+      uid: comment.userId,
+      titulo: `❤️ ${user.displayName ?? 'Alguien'} le gustó tu comentario`,
+      mensaje: comment.text.slice(0, 60), tipo: 'like',
+    });
   }
 
   async function handleEnviar() {
@@ -143,11 +140,9 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl flex flex-col animate-slide-up" style={{ maxHeight: '75vh' }}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl flex flex-col" style={{ maxHeight: '75vh' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
           <h3 className="font-black text-white">
             Comentarios {comments.length > 0 && <span className="text-gray-400 font-normal text-sm">({comments.length})</span>}
@@ -177,14 +172,10 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
                   <div className="flex items-center gap-4 mt-1 px-1">
                     <button onClick={() => handleLikeComentario(c)} className="flex items-center gap-1 active:scale-90 transition-transform">
                       {likedC ? <HeartSolid className="w-3.5 h-3.5 text-red-500" /> : <HeartOutline className="w-3.5 h-3.5 text-gray-500" />}
-                      {(c.likes?.length || 0) > 0 && (
-                        <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-500'}`}>{c.likes?.length}</span>
-                      )}
+                      {(c.likes?.length || 0) > 0 && <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-500'}`}>{c.likes?.length}</span>}
                     </button>
-                    <button
-                      onClick={() => { setRespondiendo({ id: c.id, nombre: c.userName }); setTexto(`@${c.userName} `); inputRef.current?.focus(); }}
-                      className="text-xs text-gray-500 font-bold active:scale-95 transition-transform"
-                    >
+                    <button onClick={() => { setRespondiendo({ id: c.id, nombre: c.userName }); setTexto(`@${c.userName} `); inputRef.current?.focus(); }}
+                      className="text-xs text-gray-500 font-bold active:scale-95 transition-transform">
                       Responder
                     </button>
                   </div>
@@ -202,22 +193,14 @@ function ModalComentariosReel({ reelId, reelUserId, onClose }: {
               </div>
             )}
             <div className="flex gap-3 items-center">
-              <img
-                src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
-                alt="" className="w-8 h-8 rounded-full object-cover shrink-0"
-              />
-              <input
-                ref={inputRef} value={texto}
-                onChange={(e) => setTexto(e.target.value)}
+              <img src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
+                alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+              <input ref={inputRef} value={texto} onChange={(e) => setTexto(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleEnviar()}
-                placeholder={respondiendo ? `Responder a @${respondiendo.nombre}...` : 'Escribí un comentario...'}
-                maxLength={300}
-                className="flex-1 bg-gray-800 rounded-full px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none"
-              />
-              <button
-                onClick={handleEnviar} disabled={enviando || !texto.trim()}
-                className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center disabled:opacity-40 active:scale-90 transition-transform"
-              >
+                placeholder="Escribí un comentario..." maxLength={300}
+                className="flex-1 bg-gray-800 rounded-full px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none" />
+              <button onClick={handleEnviar} disabled={enviando || !texto.trim()}
+                className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center disabled:opacity-40 active:scale-90 transition-transform">
                 <PaperAirplaneIcon className="w-4 h-4 text-white" />
               </button>
             </div>
@@ -237,6 +220,7 @@ export default function Reels() {
   const [comentandoId,   setComentandoId]   = useState<string | null>(null);
   const [comentandoUid,  setComentandoUid]  = useState('');
   const [reaccionandoId, setReaccionandoId] = useState<string | null>(null);
+  const [eliminandoId,   setEliminandoId]   = useState<string | null>(null);
   const [caption,        setCaption]        = useState('');
   const [file,           setFile]           = useState<File | null>(null);
   const [preview,        setPreview]        = useState<string | null>(null);
@@ -331,6 +315,12 @@ export default function Reels() {
     } finally { setSubiendo(false); setProgreso(0); }
   };
 
+  async function handleEliminarReel(reelId: string) {
+    setEliminandoId(null);
+    try { await deleteDoc(doc(db, 'reels', reelId)); }
+    catch (e) { console.error('[Reels] eliminar:', e); }
+  }
+
   const handleReaccion = async (reelId: string, reelUserId: string, emoji: string) => {
     if (!user) return;
     setReaccionandoId(null);
@@ -385,13 +375,14 @@ export default function Reels() {
           const miReaccion     = r.reactions?.[user?.uid ?? ''];
           const totalReacc     = Object.keys(r.reactions || {}).length;
           const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(r.userName || 'U')}&background=7c3aed&color=fff`;
+          const esMio          = user?.uid === r.userId;
+          const eliminando     = eliminandoId === r.id;
 
           return (
             <div key={r.id} className="relative h-screen w-full snap-start snap-always flex items-center justify-center bg-black">
               <video
                 ref={(el) => { videoRefs.current[i] = el; }}
-                src={r.videoUrl}
-                loop muted playsInline
+                src={r.videoUrl} loop muted playsInline
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
@@ -404,12 +395,31 @@ export default function Reels() {
                 {r.caption && <p className="text-sm leading-snug text-white/90 drop-shadow line-clamp-2">{r.caption}</p>}
               </div>
 
+              {/* Confirmación eliminar */}
+              {eliminando && (
+                <div className="absolute top-20 left-4 right-4 z-20 bg-black/80 rounded-2xl p-4 flex items-center justify-between">
+                  <p className="text-white text-sm font-bold">¿Eliminar este reel?</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEliminarReel(r.id)}
+                      className="text-xs bg-red-500 text-white px-3 py-1.5 rounded-full font-bold active:scale-95">Sí</button>
+                    <button onClick={() => setEliminandoId(null)}
+                      className="text-xs bg-gray-600 text-white px-3 py-1.5 rounded-full font-bold active:scale-95">No</button>
+                  </div>
+                </div>
+              )}
+
               <div className="absolute right-4 bottom-36 flex flex-col items-center gap-6">
+                {/* Eliminar si es mío */}
+                {esMio && (
+                  <button onClick={() => setEliminandoId(eliminando ? null : r.id)}
+                    className="flex flex-col items-center gap-1 active:scale-90 transition-transform">
+                    <TrashIcon className="w-7 h-7 text-red-400 drop-shadow" />
+                  </button>
+                )}
+
                 <div className="relative flex flex-col items-center gap-1">
-                  <button
-                    onClick={() => setReaccionandoId(reaccionandoId === r.id ? null : r.id)}
-                    className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
-                  >
+                  <button onClick={() => setReaccionandoId(reaccionandoId === r.id ? null : r.id)}
+                    className="flex flex-col items-center gap-1 active:scale-90 transition-transform">
                     <span className="text-3xl drop-shadow">{miReaccion || '🤍'}</span>
                     <span className="text-white text-xs font-bold drop-shadow">{totalReacc}</span>
                   </button>
@@ -418,18 +428,14 @@ export default function Reels() {
                   )}
                 </div>
 
-                <button
-                  onClick={() => { setComentandoId(r.id); setComentandoUid(r.userId); }}
-                  className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
-                >
+                <button onClick={() => { setComentandoId(r.id); setComentandoUid(r.userId); }}
+                  className="flex flex-col items-center gap-1 active:scale-90 transition-transform">
                   <ChatBubbleOvalLeftIcon className="w-8 h-8 text-white drop-shadow" />
                   <ComentariosCountReel reelId={r.id} />
                 </button>
 
-                <button
-                  onClick={() => handleCompartir(r)}
-                  className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
-                >
+                <button onClick={() => handleCompartir(r)}
+                  className="flex flex-col items-center gap-1 active:scale-90 transition-transform">
                   <ShareIcon className="w-7 h-7 text-white drop-shadow" />
                 </button>
               </div>
@@ -451,14 +457,10 @@ export default function Reels() {
       </div>
 
       {modalSubir && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
-          onClick={(e) => e.target === e.currentTarget && setModalSubir(false)}
-        >
-          <div
-            className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
-            style={{ maxHeight: '80vh', paddingBottom: 'calc(env(safe-area-inset-bottom) + 100px)' }}
-          >
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
+          onClick={(e) => e.target === e.currentTarget && setModalSubir(false)}>
+          <div className="w-full max-w-lg bg-gray-900 rounded-t-3xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
+            style={{ maxHeight: '80vh', paddingBottom: 'calc(env(safe-area-inset-bottom) + 100px)' }}>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-black text-white">Subir Reel</h2>
               <button onClick={() => setModalSubir(false)} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
@@ -470,8 +472,7 @@ export default function Reels() {
                 <video src={preview} className="w-full h-full object-cover" controls />
                 <button
                   onClick={() => { setFile(null); setPreview(null); if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; } }}
-                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold"
-                >✕</button>
+                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold">✕</button>
               </div>
             ) : (
               <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-gray-700 rounded-2xl py-10 cursor-pointer">
@@ -481,13 +482,9 @@ export default function Reels() {
                 <input type="file" accept="video/*" onChange={handleFile} className="hidden" />
               </label>
             )}
-            <input
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              placeholder="Descripción (opcional)"
-              maxLength={200}
-              className="w-full px-4 py-3 rounded-2xl bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
+            <input value={caption} onChange={(e) => setCaption(e.target.value)}
+              placeholder="Descripción (opcional)" maxLength={200}
+              className="w-full px-4 py-3 rounded-2xl bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500" />
             {subiendo && (
               <div className="w-full bg-gray-800 rounded-full h-2">
                 <div className="bg-purple-500 h-2 rounded-full transition-all" style={{ width: `${progreso}%` }} />
@@ -498,11 +495,8 @@ export default function Reels() {
                 <ExclamationCircleIcon className="w-4 h-4 shrink-0" />{error}
               </p>
             )}
-            <button
-              onClick={handleSubir}
-              disabled={!file || subiendo}
-              className="w-full py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50"
-            >
+            <button onClick={handleSubir} disabled={!file || subiendo}
+              className="w-full py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50">
               {subiendo ? `Subiendo... ${progreso}%` : 'Publicar Reel'}
             </button>
           </div>
@@ -510,11 +504,8 @@ export default function Reels() {
       )}
 
       {comentandoId && (
-        <ModalComentariosReel
-          reelId={comentandoId}
-          reelUserId={comentandoUid}
-          onClose={() => { setComentandoId(null); setComentandoUid(''); }}
-        />
+        <ModalComentariosReel reelId={comentandoId} reelUserId={comentandoUid}
+          onClose={() => { setComentandoId(null); setComentandoUid(''); }} />
       )}
 
       {reaccionandoId && <div className="fixed inset-0 z-10" onClick={() => setReaccionandoId(null)} />}
@@ -523,4 +514,4 @@ export default function Reels() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-              }
+            }
