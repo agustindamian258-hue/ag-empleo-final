@@ -1,9 +1,9 @@
 // src/pages/SearchUsers.tsx
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../app/firebase';
 import {
-  collection, getDocs,
+  collection, query, where, getDocs, limit,
   doc, setDoc, deleteDoc, serverTimestamp, getDoc,
 } from 'firebase/firestore';
 import {
@@ -12,20 +12,21 @@ import {
 import Navbar from '../components/Navbar';
 import Menu  from '../components/Menu';
 
-const ZONA = 'social' as const;
+const ZONA        = 'social' as const;
+const MAX_RESULTS = 50;
 
 interface UsuarioBuscado {
-  uid:       string;
-  name:      string;
+  uid:      string;
+  name:     string;
   nameLower?: string;
-  photo:     string;
-  title?:    string;
-  ciudad?:   string;
+  photo:    string;
+  title?:   string;
+  ciudad?:  string;
 }
 
 export default function SearchUsers() {
-  const navigate    = useNavigate();
-  const me          = auth.currentUser;
+  const navigate = useNavigate();
+  const me       = auth.currentUser;
 
   const [busqueda,   setBusqueda]   = useState('');
   const [resultados, setResultados] = useState<UsuarioBuscado[]>([]);
@@ -33,8 +34,21 @@ export default function SearchUsers() {
   const [siguiendo,  setSiguiendo]  = useState<Record<string, boolean>>({});
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  // Cache local para no re-fetchear el mismo pool
+  const poolRef     = useRef<UsuarioBuscado[]>([]);
+  const poolCargado = useRef(false);
+
   function followId(targetUid: string): string {
     return `${me!.uid}_${targetUid}_${ZONA}`;
+  }
+
+  async function cargarPool() {
+    if (poolCargado.current) return;
+    const snap = await getDocs(query(collection(db, 'users'), limit(MAX_RESULTS)));
+    poolRef.current = snap.docs
+      .map((d) => ({ uid: d.id, ...d.data() } as UsuarioBuscado))
+      .filter((u) => u.uid !== me?.uid);
+    poolCargado.current = true;
   }
 
   async function buscar(termino: string) {
@@ -42,22 +56,20 @@ export default function SearchUsers() {
     if (termino.trim().length < 2) { setResultados([]); return; }
     setCargando(true);
     try {
+      await cargarPool();
+
       const terminoLower = termino.toLowerCase();
-      const snap = await getDocs(collection(db, 'users'));
-      const users = snap.docs
-        .map((d) => ({ uid: d.id, ...d.data() } as UsuarioBuscado))
-        .filter((u) => {
-          if (u.uid === me?.uid) return false;
-          const nombreLower = (u.nameLower ?? u.name ?? '').toLowerCase();
-          return nombreLower.includes(terminoLower);
-        });
+      const users = poolRef.current.filter((u) => {
+        const nombreLower = (u.nameLower ?? u.name ?? '').toLowerCase();
+        return nombreLower.includes(terminoLower);
+      });
+
       setResultados(users);
 
-      if (me) {
+      if (me && users.length > 0) {
         const followStates: Record<string, boolean> = {};
         await Promise.all(users.map(async (u) => {
-          const ref  = doc(db, 'follows', followId(u.uid));
-          const snap = await getDoc(ref);
+          const snap = await getDoc(doc(db, 'follows', followId(u.uid)));
           followStates[u.uid] = snap.exists();
         }));
         setSiguiendo(followStates);
@@ -85,7 +97,6 @@ export default function SearchUsers() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
-
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => navigate(-1)} className="p-2 rounded-full bg-gray-100 dark:bg-gray-800 active:scale-90 transition-transform">
           <ArrowLeftIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
@@ -104,7 +115,6 @@ export default function SearchUsers() {
       </header>
 
       <div className="px-4 pt-4 space-y-3">
-
         {cargando && (
           <div className="flex justify-center py-10">
             <div className="w-7 h-7 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
