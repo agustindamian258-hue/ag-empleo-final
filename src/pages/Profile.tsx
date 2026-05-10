@@ -1,7 +1,11 @@
 // src/pages/Profile.tsx
 import { useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, onSnapshot, deleteDoc, addDoc, orderBy, arrayUnion, arrayRemove, getDocs, getCountFromServer } from 'firebase/firestore';
+import {
+  doc, getDoc, updateDoc, serverTimestamp, collection,
+  query, where, onSnapshot, deleteDoc, addDoc, orderBy,
+  arrayUnion, arrayRemove, getDocs, getCountFromServer,
+} from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../app/firebase';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -28,6 +32,10 @@ interface UserForm {
   salarioEsperado:  string;
 }
 
+interface FirestoreTimestamp {
+  toDate: () => Date;
+}
+
 interface Post {
   id:        string;
   text:      string;
@@ -35,10 +43,9 @@ interface Post {
   mediaType: string;
   userId:    string;
   userName:  string;
-  userPhoto: string;
   reactions: Record<string, string>;
   zona:      string;
-  createdAt: { toDate: () => Date } | null;
+  createdAt: FirestoreTimestamp | null;
 }
 
 interface Comment {
@@ -48,17 +55,15 @@ interface Comment {
   userName:  string;
   userPhoto: string;
   likes:     string[];
-  replyTo:   string | null;
-  createdAt: { toDate: () => Date } | null;
+  createdAt: FirestoreTimestamp | null;
 }
 
 type StatusMsg = { tipo: 'exito' | 'error'; texto: string } | null;
 type TabId     = 'social' | 'empleo';
 
-const MAX_BIO        = 300;
-const MAX_PHOTO_MB   = 5;
-const REACCIONES     = ['❤️', '😂', '😍', '👍', '😲'];
-const REPORTES_LIMITE = 5;
+const MAX_BIO      = 300;
+const MAX_PHOTO_MB = 5;
+const REACCIONES   = ['❤️', '😂', '😍', '👍', '😲'];
 
 const NIVELES = [
   'Sin experiencia',
@@ -80,8 +85,8 @@ function sanitizeText(input: string): string {
   return input.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
 }
 
-function formatFecha(createdAt: Post['createdAt']): string {
-  if (!createdAt?.toDate) return 'Ahora';
+function formatFecha(createdAt: FirestoreTimestamp | null): string {
+  if (!createdAt?.toDate) return '';
   return createdAt.toDate().toLocaleDateString('es-AR', {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   });
@@ -96,45 +101,6 @@ async function crearNotificacion({ uid, titulo, mensaje, tipo }: {
       uid, titulo, mensaje, tipo, leida: false, creadoEn: serverTimestamp(),
     });
   } catch (e) { console.error('[Notif]', e); }
-}
-
-function SelectorReaccion({ onSelect }: { onSelect: (emoji: string) => void }) {
-  const [custom, setCustom] = useState(false);
-  const [input,  setInput]  = useState('');
-  return (
-    <div className="absolute bottom-10 left-0 z-20 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-2 flex items-center gap-1">
-      {REACCIONES.map((e) => (
-        <button key={e} onClick={() => onSelect(e)} className="text-2xl active:scale-125 transition-transform hover:scale-110">{e}</button>
-      ))}
-      {custom ? (
-        <input autoFocus value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) { onSelect(input.trim()); setInput(''); setCustom(false); } }}
-          placeholder="😀"
-          className="w-10 h-8 text-center text-lg bg-gray-100 dark:bg-gray-700 rounded-xl focus:outline-none"
-          maxLength={2}
-        />
-      ) : (
-        <button onClick={() => setCustom(true)} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500">
-          <FaceSmileIcon className="w-5 h-5" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-function ResumenReacciones({ reactions }: { reactions: Record<string, string> }) {
-  const conteo = Object.values(reactions || {}).reduce<Record<string, number>>((acc, e) => {
-    acc[e] = (acc[e] || 0) + 1; return acc;
-  }, {});
-  const top = Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  if (top.length === 0) return null;
-  return (
-    <div className="flex items-center gap-1 px-4 pb-2">
-      <div className="flex -space-x-1">{top.map(([emoji]) => <span key={emoji} className="text-base">{emoji}</span>)}</div>
-      <span className="text-xs text-gray-400 ml-1">{Object.keys(reactions).length}</span>
-    </div>
-  );
 }
 
 function ModalComentarios({ postId, postUserId, onClose }: {
@@ -161,11 +127,6 @@ function ModalComentarios({ postId, postUserId, onClose }: {
     const ref   = doc(db, 'posts', postId, 'comments', comment.id);
     const liked = comment.likes?.includes(user.uid);
     await updateDoc(ref, { likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
-    if (!liked) await crearNotificacion({
-      uid: comment.userId,
-      titulo: `❤️ ${user.displayName ?? 'Alguien'} le gustó tu comentario`,
-      mensaje: comment.text.slice(0, 60), tipo: 'like',
-    });
   }
 
   async function handleEnviar() {
@@ -210,7 +171,7 @@ function ModalComentarios({ postId, postUserId, onClose }: {
             const avatar = c.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.userName || 'U')}&background=7c3aed&color=fff`;
             const likedC = c.likes?.includes(user?.uid ?? '');
             return (
-              <div key={c.id} className={`flex gap-3 ${c.replyTo ? 'ml-8' : ''}`}>
+              <div key={c.id} className="flex gap-3">
                 <img src={avatar} alt={c.userName} className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl px-3 py-2">
@@ -223,9 +184,7 @@ function ModalComentarios({ postId, postUserId, onClose }: {
                       {(c.likes?.length || 0) > 0 && <span className={`text-xs font-bold ${likedC ? 'text-red-500' : 'text-gray-400'}`}>{c.likes?.length}</span>}
                     </button>
                     <button onClick={() => { setRespondiendo({ id: c.id, nombre: c.userName }); setTexto(`@${c.userName} `); inputRef.current?.focus(); }}
-                      className="text-xs text-gray-400 font-bold active:scale-95 transition-transform">
-                      Responder
-                    </button>
+                      className="text-xs text-gray-400 font-bold active:scale-95">Responder</button>
                   </div>
                 </div>
               </div>
@@ -257,18 +216,19 @@ function ModalComentarios({ postId, postUserId, onClose }: {
       </div>
     </div>
   );
-}import React from 'react';
+}
+
+import React from 'react';
 
 export default function Profile() {
   const { socialColor, setSocialColor } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const zonaInicial: TabId =
-    (location.state as { zona?: TabId } | null)?.zona ?? 'empleo';
+  const zonaInicial: TabId = (location.state as { zona?: TabId } | null)?.zona ?? 'empleo';
 
-  const [user,         setUser]         = useState<User | null>(null);
-  const [form,         setForm]         = useState<UserForm>({
+  const [user,          setUser]          = useState<User | null>(null);
+  const [form,          setForm]          = useState<UserForm>({
     name: '', title: '', bio: '', ciudad: '',
     cargoDeseado: '', nivelExperiencia: 'Junior (0-2 años)',
     disponible: true, salarioEsperado: '',
@@ -302,12 +262,16 @@ export default function Profile() {
       if (u) {
         loadProfile(u.uid);
         loadMisPosts(u.uid);
-        loadFollowStats(u.uid);
         setFotoURL(u.photoURL || '');
       }
     });
     return () => unsub();
   }, []);
+
+  // Recargar stats cuando cambia la zona
+  useEffect(() => {
+    if (user) loadFollowStats(user.uid, tabActiva);
+  }, [tabActiva, user]);
 
   const loadProfile = async (uid: string) => {
     try {
@@ -342,10 +306,20 @@ export default function Profile() {
     });
   };
 
-  const loadFollowStats = (uid: string) => {
-    const qSeg = query(collection(db, 'follows'), where('followingId', '==', uid));
+  // Seguidores y siguiendo filtrados por zona activa
+  const loadFollowStats = (uid: string, zona: TabId) => {
+    const qSeg = query(
+      collection(db, 'follows'),
+      where('followingId', '==', uid),
+      where('zona', '==', zona),
+    );
     onSnapshot(qSeg, (snap) => setSeguidores(snap.size));
-    const qSig = query(collection(db, 'follows'), where('followerId', '==', uid));
+
+    const qSig = query(
+      collection(db, 'follows'),
+      where('followerId', '==', uid),
+      where('zona', '==', zona),
+    );
     onSnapshot(qSig, (snap) => setSiguiendo(snap.size));
   };
 
@@ -442,9 +416,7 @@ export default function Profile() {
         postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
       });
       const snapConteo = await getCountFromServer(query(collection(db, 'reports'), where('postId', '==', postId)));
-      if (snapConteo.data().count >= REPORTES_LIMITE) {
-        await deleteDoc(doc(db, 'posts', postId));
-      }
+      if (snapConteo.data().count >= 5) await deleteDoc(doc(db, 'posts', postId));
     } catch (e) { console.error('[Profile] reportar:', e); }
   }
 
@@ -464,7 +436,6 @@ export default function Profile() {
 
   const inputCls = 'w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300]';
   const headerGradient = tabActiva === 'social' ? 'from-purple-600 to-purple-800' : 'from-blue-600 to-blue-800';
-
   const postsZona = misPosts.filter((p) => p.zona === tabActiva);
 
   return (
@@ -494,12 +465,14 @@ export default function Profile() {
             <p className="text-sm text-gray-500 dark:text-gray-400">{form.title || 'Tu título profesional'}</p>
             {form.ciudad && <p className="text-xs text-gray-400 dark:text-gray-500">📍 {form.ciudad}</p>}
           </div>
+
+          {/* Stats — seguidores/siguiendo filtrados por zona activa */}
           <div className="flex gap-6">
             {[
-              { value: misPosts.length, label: 'Posts', icon: <DocumentTextIcon className="w-3.5 h-3.5" /> },
+              { value: misPosts.length, label: 'Posts',      icon: <DocumentTextIcon className="w-3.5 h-3.5" /> },
               { value: seguidores,      label: 'Seguidores' },
-              { value: siguiendo,       label: 'Siguiendo' },
-              { value: totalLikes,      label: 'Likes', icon: <HeartIcon className="w-3.5 h-3.5" /> },
+              { value: siguiendo,       label: 'Siguiendo'  },
+              { value: totalLikes,      label: 'Likes',      icon: <HeartIcon className="w-3.5 h-3.5" /> },
             ].map((s, i, arr) => (
               <React.Fragment key={s.label}>
                 <div className="flex flex-col items-center">
@@ -512,6 +485,7 @@ export default function Profile() {
           </div>
         </div>
 
+        {/* Tabs */}
         <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
           {(['social', 'empleo'] as TabId[]).map((t) => (
             <button key={t} onClick={() => setTabActiva(t)}
@@ -523,6 +497,7 @@ export default function Profile() {
           ))}
         </div>
 
+        {/* Tab Social */}
         {tabActiva === 'social' && (
           <>
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
@@ -553,13 +528,15 @@ export default function Profile() {
                   <span>Bio</span>
                   <span className={`normal-case font-normal ${form.bio.length >= MAX_BIO ? 'text-red-400' : 'text-gray-300'}`}>{form.bio.length}/{MAX_BIO}</span>
                 </label>
-                <textarea value={form.bio} onChange={(e) => { if (e.target.value.length <= MAX_BIO) setForm({ ...form, bio: e.target.value }); }}
+                <textarea value={form.bio}
+                  onChange={(e) => { if (e.target.value.length <= MAX_BIO) setForm({ ...form, bio: e.target.value }); }}
                   rows={4} maxLength={MAX_BIO} placeholder="Contá algo sobre vos..." className={`${inputCls} resize-none`} />
               </div>
             </div>
           </>
         )}
 
+        {/* Tab Empleo */}
         {tabActiva === 'empleo' && (
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <h2 className="font-black text-gray-800 dark:text-white text-base">Perfil de empleo</h2>
@@ -611,7 +588,7 @@ export default function Profile() {
           {guardando ? 'Guardando...' : 'Guardar perfil'}
         </button>
 
-        {/* Mis publicaciones como feed completo */}
+        {/* Publicaciones como feed completo filtradas por zona */}
         {postsZona.length > 0 && (
           <div className="space-y-3">
             <h2 className="font-black text-gray-800 dark:text-white text-base px-1">
@@ -659,9 +636,7 @@ export default function Profile() {
                         maxLength={500} />
                       <div className="flex gap-2">
                         <button onClick={() => { setEditandoId(null); setEditTexto(''); }}
-                          className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 text-sm font-bold active:scale-95">
-                          Cancelar
-                        </button>
+                          className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 text-sm font-bold active:scale-95">Cancelar</button>
                         <button onClick={() => handleEditarGuardar(p.id)} disabled={guardandoEdit || !editTexto.trim()}
                           className="flex-1 py-2 rounded-xl bg-blue-500 text-white text-sm font-bold flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50">
                           <CheckIcon className="w-4 h-4" />
@@ -679,7 +654,12 @@ export default function Profile() {
                       : <img src={p.mediaUrl} alt="Imagen del post" className="w-full max-h-80 object-cover" loading="lazy" />
                   )}
 
-                  <ResumenReacciones reactions={p.reactions || {}} />
+                  {Object.keys(p.reactions || {}).length > 0 && (
+                    <div className="flex items-center gap-1 px-4 pb-2">
+                      {Object.values(p.reactions).slice(0, 3).map((emoji, i) => <span key={i} className="text-base">{emoji}</span>)}
+                      <span className="text-xs text-gray-400 ml-1">{Object.keys(p.reactions).length}</span>
+                    </div>
+                  )}
 
                   <div className="px-4 py-3 flex items-center gap-5 border-t border-gray-100 dark:border-gray-800">
                     <div className="relative">
@@ -691,7 +671,12 @@ export default function Profile() {
                         </span>
                       </button>
                       {reaccionandoId === p.id && (
-                        <SelectorReaccion onSelect={(emoji) => handleReaccion(p.id, p.userId, emoji)} />
+                        <div className="absolute bottom-10 left-0 z-20 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-2 flex items-center gap-1">
+                          {REACCIONES.map((e) => (
+                            <button key={e} onClick={() => handleReaccion(p.id, p.userId, e)}
+                              className="text-2xl active:scale-125 transition-transform hover:scale-110">{e}</button>
+                          ))}
+                        </div>
                       )}
                     </div>
                     <button onClick={() => { setComentandoId(p.id); setComentandoUid(p.userId); }}
@@ -726,4 +711,4 @@ export default function Profile() {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-}
+        }
