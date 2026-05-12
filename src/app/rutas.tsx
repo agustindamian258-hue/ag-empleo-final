@@ -1,3 +1,4 @@
+// src/app/rutas.tsx
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { User } from 'firebase/auth';
 import { useEffect } from 'react';
@@ -17,6 +18,7 @@ import Privacidad    from '../pages/Privacidad';
 import Notifications from '../pages/Notifications';
 import Messages      from '../pages/Messages';
 import Chat          from '../pages/Chat';
+import NotFound      from '../pages/NotFound';
 
 interface AppRoutesProps      { user: User | null; loading: boolean; }
 interface ProtectedRouteProps { user: User | null; loading: boolean; children: React.ReactElement; }
@@ -78,7 +80,8 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
         <Route path="/messages"       element={PR(<Messages />)}      />
         <Route path="/chat/:chatId"   element={PR(<Chat />)}          />
 
-        <Route path="*" element={<Navigate to={user ? '/' : '/login'} replace />} />
+        {/* 404 — usuarios logueados ven la página, no logueados van a login */}
+        <Route path="*" element={user ? <NotFound /> : <Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   );
