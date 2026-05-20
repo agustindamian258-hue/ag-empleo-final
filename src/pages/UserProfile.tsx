@@ -1,16 +1,15 @@
-// src/pages/UserProfile.tsx
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { db, auth } from '../app/firebase';
 import {
   doc, getDoc, collection, query, where,
   onSnapshot, setDoc, deleteDoc, serverTimestamp,
-  orderBy, addDoc,
+  orderBy, addDoc, updateDoc,
 } from 'firebase/firestore';
 import {
   ArrowLeftIcon, HeartIcon, ChatBubbleLeftRightIcon,
   ChatBubbleOvalLeftIcon, ShareIcon, XMarkIcon,
-  PaperAirplaneIcon, FaceSmileIcon,
+  PaperAirplaneIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import Navbar from '../components/Navbar';
@@ -29,6 +28,7 @@ interface Post {
   reactions: Record<string, string>;
   userId:    string;
   userName:  string;
+  zona:      string;
   createdAt: { toDate: () => Date } | null;
 }
 
@@ -44,8 +44,8 @@ interface Comment {
 
 type Zona = 'social' | 'empleo';
 
-const RUTAS_SOCIAL  = ['/social', '/reels', '/search'];
-const REACCIONES    = ['❤️', '😂', '😍', '👍', '😲'];
+const RUTAS_SOCIAL = ['/social', '/reels', '/search'];
+const REACCIONES   = ['❤️', '😂', '😍', '👍', '😲'];
 
 function formatFecha(createdAt: Post['createdAt']): string {
   if (!createdAt?.toDate) return '';
@@ -181,9 +181,11 @@ export default function UserProfile() {
       setCargando(false);
     });
 
+    // ✅ Corregido: filtra posts por zona
     const qPosts = query(
       collection(db, 'posts'),
       where('userId', '==', uid),
+      where('zona', '==', zona),
       orderBy('createdAt', 'desc'),
     );
     const unsubPosts = onSnapshot(qPosts, (snap) =>
@@ -227,9 +229,9 @@ export default function UserProfile() {
       const reactions: Record<string, string> = snap.data()?.reactions || {};
       if (reactions[me.uid] === emoji) {
         const updated = { ...reactions }; delete updated[me.uid];
-        await setDoc(postRef, { reactions: updated }, { merge: true });
+        await updateDoc(postRef, { reactions: updated });
       } else {
-        await setDoc(postRef, { [`reactions.${me.uid}`]: emoji }, { merge: true });
+        await updateDoc(postRef, { [`reactions.${me.uid}`]: emoji });
         if (postUserId !== me.uid) {
           await addDoc(collection(db, 'notifications'), {
             uid: postUserId,
@@ -355,7 +357,6 @@ export default function UserProfile() {
           )}
         </div>
 
-        {/* Toggle vista grilla/feed */}
         {posts.length > 0 && (
           <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
             <button onClick={() => setVistaGrilla(true)}
@@ -369,7 +370,6 @@ export default function UserProfile() {
           </div>
         )}
 
-        {/* Vista grilla */}
         {vistaGrilla && posts.length > 0 && (
           <div className="grid grid-cols-3 gap-1.5">
             {posts.map((p) => (
@@ -395,7 +395,6 @@ export default function UserProfile() {
           </div>
         )}
 
-        {/* Vista feed con reacciones y comentarios */}
         {!vistaGrilla && posts.length > 0 && (
           <div className="space-y-3">
             {posts.map((p) => {
@@ -419,7 +418,6 @@ export default function UserProfile() {
                       : <img src={p.mediaUrl} alt="Imagen del post" className="w-full max-h-80 object-cover" loading="lazy" />
                   )}
 
-                  {/* Resumen reacciones */}
                   {Object.keys(p.reactions || {}).length > 0 && (
                     <div className="flex items-center gap-1 px-4 pb-2">
                       {Object.values(p.reactions).slice(0, 3).map((emoji, i) => (
@@ -481,4 +479,4 @@ export default function UserProfile() {
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-    }
+              }
