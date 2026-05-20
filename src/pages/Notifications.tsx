@@ -1,5 +1,4 @@
-// src/pages/Notifications.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot,
   updateDoc, doc, deleteDoc, writeBatch,
@@ -62,6 +61,8 @@ function timeAgo(n: Notif): string {
 export default function Notifications() {
   const { user }   = useTheme();
   const navigate   = useNavigate();
+  const holdTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [notifs,      setNotifs]      = useState<Notif[]>([]);
   const [cargando,    setCargando]    = useState(true);
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -122,7 +123,19 @@ export default function Notifications() {
     if (n.tipo === 'mensaje') navigate('/messages');
   }
 
-  const sinLeer  = notifs.filter(n => !n.leida).length;
+  // ✅ Corregido: onLongPress reemplazado por onTouchStart + setTimeout
+  function handleTouchStart(id: string) {
+    holdTimer.current = setTimeout(() => {
+      setModoSelec(true);
+      toggleSeleccion(id);
+    }, 500);
+  }
+
+  function handleTouchEnd() {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+  }
+
+  const sinLeer   = notifs.filter(n => !n.leida).length;
   const conLeidas = notifs.filter(n => n.leida).length;
 
   return (
@@ -132,7 +145,6 @@ export default function Notifications() {
 
       <div className="max-w-lg mx-auto px-4 pt-6">
 
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <BellIcon className="w-6 h-6 text-[--sc-500]" />
@@ -167,7 +179,6 @@ export default function Notifications() {
           </div>
         </div>
 
-        {/* Barra acción selección */}
         {modoSelec && seleccion.size > 0 && (
           <div className="flex items-center justify-between bg-red-50 dark:bg-red-950/40 rounded-2xl px-4 py-3 mb-3">
             <span className="text-sm font-black text-red-600">{seleccion.size} seleccionada{seleccion.size !== 1 ? 's' : ''}</span>
@@ -178,7 +189,6 @@ export default function Notifications() {
           </div>
         )}
 
-        {/* Lista */}
         {cargando ? (
           <div className="flex justify-center pt-16">
             <div className="w-8 h-8 border-4 border-[--sc-500] border-t-transparent rounded-full animate-spin" />
@@ -199,7 +209,8 @@ export default function Notifications() {
                 <button
                   key={n.id}
                   onClick={() => handleTap(n)}
-                  onLongPress={() => { setModoSelec(true); toggleSeleccion(n.id); }}
+                  onTouchStart={() => handleTouchStart(n.id)}
+                  onTouchEnd={handleTouchEnd}
                   className={`w-full flex items-start gap-3 p-4 rounded-3xl border transition-all active:scale-[0.98] text-left ${
                     seleccionada
                       ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
@@ -232,4 +243,4 @@ export default function Notifications() {
       </div>
     </div>
   );
-}
+  }
