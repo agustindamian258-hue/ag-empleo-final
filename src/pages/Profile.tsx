@@ -1,13 +1,11 @@
-// src/pages/Profile.tsx
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import {
   doc, getDoc, updateDoc, serverTimestamp, collection,
   query, where, onSnapshot, deleteDoc, addDoc, orderBy,
   arrayUnion, arrayRemove, getDocs, getCountFromServer,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage } from '../app/firebase';
+import { auth, db } from '../app/firebase';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
@@ -16,10 +14,11 @@ import {
   CheckCircleIcon, ExclamationCircleIcon,
   CameraIcon, HeartIcon, DocumentTextIcon,
   ChatBubbleOvalLeftIcon, ShareIcon, XMarkIcon,
-  FaceSmileIcon, TrashIcon, PencilIcon, CheckIcon,
-  PaperAirplaneIcon, FlagIcon,
+  TrashIcon, PencilIcon, CheckIcon,
+  PaperAirplaneIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
+import { subirArchivoCloudinary } from '../utils/cloudinary';
 
 interface UserForm {
   name:             string;
@@ -218,8 +217,6 @@ function ModalComentarios({ postId, postUserId, onClose }: {
   );
 }
 
-import React from 'react';
-
 export default function Profile() {
   const { socialColor, setSocialColor } = useTheme();
   const location = useLocation();
@@ -268,7 +265,6 @@ export default function Profile() {
     return () => unsub();
   }, []);
 
-  // Recargar stats cuando cambia la zona
   useEffect(() => {
     if (user) loadFollowStats(user.uid, tabActiva);
   }, [tabActiva, user]);
@@ -306,7 +302,6 @@ export default function Profile() {
     });
   };
 
-  // Seguidores y siguiendo filtrados por zona activa
   const loadFollowStats = (uid: string, zona: TabId) => {
     const qSeg = query(
       collection(db, 'follows'),
@@ -332,15 +327,15 @@ export default function Profile() {
       return;
     }
     setSubiendoFoto(true);
+    setStatus(null);
     try {
-      const sRef = storageRef(storage, `avatars/${user.uid}`);
-      await uploadBytes(sRef, f);
-      const url = await getDownloadURL(sRef);
+      const { url } = await subirArchivoCloudinary(f);
       setFotoURL(url);
       await updateDoc(doc(db, 'users', user.uid), { photo: url, updatedAt: serverTimestamp() });
+      setStatus({ tipo: 'exito', texto: '¡Foto actualizada!' });
     } catch (e) {
       console.error('[Profile] foto upload:', e);
-      setStatus({ tipo: 'error', texto: 'No se pudo subir la foto.' });
+      setStatus({ tipo: 'error', texto: 'No se pudo subir la foto. Intentá de nuevo.' });
     } finally { setSubiendoFoto(false); }
   }
 
@@ -466,7 +461,6 @@ export default function Profile() {
             {form.ciudad && <p className="text-xs text-gray-400 dark:text-gray-500">📍 {form.ciudad}</p>}
           </div>
 
-          {/* Stats — seguidores/siguiendo filtrados por zona activa */}
           <div className="flex gap-6">
             {[
               { value: misPosts.length, label: 'Posts',      icon: <DocumentTextIcon className="w-3.5 h-3.5" /> },
@@ -485,7 +479,6 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
           {(['social', 'empleo'] as TabId[]).map((t) => (
             <button key={t} onClick={() => setTabActiva(t)}
@@ -497,7 +490,6 @@ export default function Profile() {
           ))}
         </div>
 
-        {/* Tab Social */}
         {tabActiva === 'social' && (
           <>
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
@@ -536,7 +528,6 @@ export default function Profile() {
           </>
         )}
 
-        {/* Tab Empleo */}
         {tabActiva === 'empleo' && (
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <h2 className="font-black text-gray-800 dark:text-white text-base">Perfil de empleo</h2>
@@ -588,7 +579,6 @@ export default function Profile() {
           {guardando ? 'Guardando...' : 'Guardar perfil'}
         </button>
 
-        {/* Publicaciones como feed completo filtradas por zona */}
         {postsZona.length > 0 && (
           <div className="space-y-3">
             <h2 className="font-black text-gray-800 dark:text-white text-base px-1">
@@ -711,4 +701,4 @@ export default function Profile() {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-        }
+          }
