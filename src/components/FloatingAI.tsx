@@ -18,11 +18,10 @@ Conocés estas secciones: Mapa de Changas, Empresas A-Z y Generador de CV.
 Si te preguntan algo fuera del ámbito laboral, llevá la charla de vuelta al trabajo.
 Respondé de forma concisa, en no más de 3 oraciones cuando sea posible.`;
 
-// 🚀 MODIFICADO PARA LA PRUEBA DE ACTUALIZACIÓN
 const MENSAJE_INICIAL: Mensaje = {
   id:      'init',
   role:    'ai',
-  content: '¡PRUEBA DE ACTUALIZACIÓN EXITOSA! Che, decime qué necesitas.',
+  content: '¡Hola! Soy la IA de AG Empleo. ¿En qué te puedo ayudar hoy, che?',
 };
 
 const API_KEY_DISPONIBLE = Boolean(import.meta.env.VITE_OPENROUTER_API_KEY);
@@ -98,6 +97,7 @@ export default function FloatingAI() {
       const data = await response.json();
       if (!response.ok) throw new Error(`ERROR ${response.status}: ${JSON.stringify(data?.error ?? data)}`);
 
+      // ✅ Arreglado el error de sintaxis del punto y signo de interrogación
       const texto = data.choices?.[0]?.message?.content?.trim() || '¿Me lo repetís? No entendí bien.';
       setHistorial(prev => [...prev.slice(-MAX_HISTORIAL), { id: `ai_${Date.now()}`, role: 'ai', content: texto }]);
     } catch (e: unknown) {
@@ -122,7 +122,7 @@ export default function FloatingAI() {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-24 right-4 w-[90vw] max-w-[360px] h-[520px] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl z-[150] flex flex-col border border-gray-100 dark:border-gray-800 overflow-hidden">
+        <div className="fixed bottom-24 right-4 w-[90vw] max-w-[360px] h-[520px] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl z-50 flex flex-col border border-gray-100 dark:border-gray-800 overflow-hidden">
           <div className="bg-[--sc-500] p-4 flex justify-between items-center text-white">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
