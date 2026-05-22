@@ -18,10 +18,11 @@ Conocés estas secciones: Mapa de Changas, Empresas A-Z y Generador de CV.
 Si te preguntan algo fuera del ámbito laboral, llevá la charla de vuelta al trabajo.
 Respondé de forma concisa, en no más de 3 oraciones cuando sea posible.`;
 
+// 🚀 MODIFICADO PARA LA PRUEBA DE ACTUALIZACIÓN
 const MENSAJE_INICIAL: Mensaje = {
   id:      'init',
   role:    'ai',
-  content: '¡Hola! Soy la IA de AG Empleo. ¿En qué te puedo ayudar hoy, che?',
+  content: '¡PRUEBA DE ACTUALIZACIÓN EXITOSA! Che, decime qué necesitas.',
 };
 
 const API_KEY_DISPONIBLE = Boolean(import.meta.env.VITE_OPENROUTER_API_KEY);
@@ -83,7 +84,6 @@ export default function FloatingAI() {
           'X-Title':       'AG Empleo',
         },
         body: JSON.stringify({
-          // ✅ Corregido: Enrutador automático para evitar caídas por modelos discontinuados
           model: 'openrouter/free',
           messages: [
             { role: 'system', content: systemFinal },
