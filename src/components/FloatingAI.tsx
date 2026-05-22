@@ -74,17 +74,17 @@ export default function FloatingAI() {
 
       const ventana = [...historial.slice(-MAX_HISTORIAL), msgUsuario];
 
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const response = await fetch('https://openrouter.ai', {
         method: 'POST',
         headers: {
           'Content-Type':  'application/json',
           'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer':  'https://ag-empleo-final1.web.app',
+          'HTTP-Referer':  'https://web.app',
           'X-Title':       'AG Empleo',
         },
         body: JSON.stringify({
-          // ✅ Corregido: modelo gratuito actualizado
-          model: 'meta-llama/llama-3.1-8b-instruct:free',
+          // ✅ Corregido: Enrutador automático para evitar caídas por modelos discontinuados
+          model: 'openrouter/free',
           messages: [
             { role: 'system', content: systemFinal },
             ...ventana.map(h => ({
