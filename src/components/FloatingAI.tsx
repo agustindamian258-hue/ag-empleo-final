@@ -1,4 +1,3 @@
-// src/components/FloatingAI.tsx
 import { useState, useRef, useEffect } from 'react';
 import { XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/solid';
 import { auth, db } from '../app/firebase';
@@ -66,10 +65,7 @@ export default function FloatingAI() {
 
     const msgUsuario: Mensaje = { id: `user_${Date.now()}`, role: 'user', content: userMsg };
 
-    setHistorial(prev => {
-      const actualizado = [...prev.slice(-MAX_HISTORIAL), msgUsuario];
-      return actualizado;
-    });
+    setHistorial(prev => [...prev.slice(-MAX_HISTORIAL), msgUsuario]);
 
     try {
       const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
@@ -83,11 +79,12 @@ export default function FloatingAI() {
         headers: {
           'Content-Type':  'application/json',
           'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer':  'https://ag-empleo.app',
+          'HTTP-Referer':  'https://ag-empleo-final1.web.app',
           'X-Title':       'AG Empleo',
         },
         body: JSON.stringify({
-          model: 'meta-llama/llama-4-scout:free',
+          // ✅ Corregido: modelo gratuito actualizado
+          model: 'meta-llama/llama-3.1-8b-instruct:free',
           messages: [
             { role: 'system', content: systemFinal },
             ...ventana.map(h => ({
@@ -185,4 +182,4 @@ export default function FloatingAI() {
       )}
     </>
   );
-              }
+}
