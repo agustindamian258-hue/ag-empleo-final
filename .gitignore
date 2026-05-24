@@ -11,3 +11,5 @@ dist/
 
 # Sistema
 .DS_Store
+.env
+.vercel
