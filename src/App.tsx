@@ -4,6 +4,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './app/firebase';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import AppRoutes from './app/rutas';
+import InstallBanner from './components/InstallBanner';
 
 const COLOR_VARS: Record<string, Record<string, string>> = {
   blue:   { '--sc-500': '#3b82f6', '--sc-600': '#2563eb', '--sc-100': '#dbeafe', '--sc-700': '#1d4ed8' },
@@ -29,14 +30,12 @@ function AppContent() {
   const { isSocialMode, setUser, socialColor, darkMode } = useTheme();
   const [user, setLocalUser] = useState<User | null | undefined>(undefined);
 
-  // Aplica variables CSS de color
   useEffect(() => {
     const vars = COLOR_VARS[socialColor] ?? COLOR_VARS.blue;
     const root = document.documentElement;
     Object.entries(vars).forEach(([k, v]) => root.style.setProperty(k, v));
   }, [socialColor]);
 
-  // Aplica dark mode en <html>
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
   }, [darkMode]);
@@ -54,6 +53,7 @@ function AppContent() {
   return (
     <div className={isSocialMode ? 'theme-social' : 'theme-empleo'}>
       <AppRoutes user={user} loading={false} />
+      <InstallBanner />
     </div>
   );
 }
@@ -64,4 +64,4 @@ export default function App() {
       <AppContent />
     </ThemeProvider>
   );
-  }
+}
