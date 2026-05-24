@@ -42,7 +42,7 @@ const MENSAJE_INICIAL: Mensaje = {
   content: '¡Hola! Soy el asistente de AG Empleo 💼 ¿En qué te puedo ayudar hoy?',
 };
 
-// ─── Helper: convierte historial interno al formato de Gemini ─────────────────
+// ─── Helper ───────────────────────────────────────────────────────────────────
 
 function toGeminiMessages(historial: Mensaje[]): GeminiMessage[] {
   return historial
@@ -134,11 +134,9 @@ export default function FloatingAI() {
         ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}`
         : SYSTEM_PROMPT;
 
-      // Gemini necesita que los mensajes alternen user/model
-      // y que el último sea siempre del usuario
       const mensajesGemini = toGeminiMessages(historialActualizado.slice(-MAX_HISTORIAL));
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
       const response = await fetch(url, {
         method:  'POST',
@@ -148,7 +146,7 @@ export default function FloatingAI() {
           system_instruction: {
             parts: [{ text: systemFinal }],
           },
-          contents:           mensajesGemini,
+          contents:        mensajesGemini,
           generationConfig: {
             maxOutputTokens: 1024,
             temperature:     0.7,
@@ -200,8 +198,6 @@ export default function FloatingAI() {
     setMensaje('');
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
   return (
     <>
       {!isOpen && (
@@ -217,7 +213,6 @@ export default function FloatingAI() {
       {isOpen && (
         <div className="fixed bottom-24 right-4 w-[90vw] max-w-[360px] h-[520px] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl z-50 flex flex-col border border-gray-100 dark:border-gray-800 overflow-hidden">
 
-          {/* Header */}
           <div className="bg-[--sc-500] p-4 flex justify-between items-center text-white shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
@@ -250,7 +245,6 @@ export default function FloatingAI() {
             </div>
           </div>
 
-          {/* Mensajes */}
           <div
             ref={scrollRef}
             className="flex-grow p-4 overflow-y-auto bg-gray-50 dark:bg-gray-950 space-y-3"
@@ -286,7 +280,6 @@ export default function FloatingAI() {
             )}
           </div>
 
-          {/* Input */}
           <div className="p-3 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex gap-2 shrink-0">
             <input
               ref={inputRef}
@@ -311,4 +304,4 @@ export default function FloatingAI() {
       )}
     </>
   );
-}
+                   }
