@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import { User, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import {
   doc, getDoc, updateDoc, serverTimestamp, collection,
   query, where, onSnapshot, deleteDoc, addDoc, orderBy,
@@ -21,56 +21,27 @@ import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import { subirArchivoCloudinary } from '../utils/cloudinary';
 
 interface UserForm {
-  name:             string;
-  title:            string;
-  bio:              string;
-  ciudad:           string;
-  cargoDeseado:     string;
-  nivelExperiencia: string;
-  disponible:       boolean;
-  salarioEsperado:  string;
+  name: string; title: string; bio: string; ciudad: string;
+  cargoDeseado: string; nivelExperiencia: string;
+  disponible: boolean; salarioEsperado: string;
 }
-
-interface FirestoreTimestamp {
-  toDate: () => Date;
-}
-
+interface FirestoreTimestamp { toDate: () => Date; }
 interface Post {
-  id:        string;
-  text:      string;
-  mediaUrl:  string;
-  mediaType: string;
-  userId:    string;
-  userName:  string;
-  reactions: Record<string, string>;
-  zona:      string;
-  createdAt: FirestoreTimestamp | null;
+  id: string; text: string; mediaUrl: string; mediaType: string;
+  userId: string; userName: string; reactions: Record<string, string>;
+  zona: string; createdAt: FirestoreTimestamp | null;
 }
-
 interface Comment {
-  id:        string;
-  text:      string;
-  userId:    string;
-  userName:  string;
-  userPhoto: string;
-  likes:     string[];
-  createdAt: FirestoreTimestamp | null;
+  id: string; text: string; userId: string; userName: string;
+  userPhoto: string; likes: string[]; createdAt: FirestoreTimestamp | null;
 }
-
 type StatusMsg = { tipo: 'exito' | 'error'; texto: string } | null;
-type TabId     = 'social' | 'empleo';
+type TabId = 'social' | 'empleo';
 
-const MAX_BIO      = 300;
+const MAX_BIO = 300;
 const MAX_PHOTO_MB = 5;
-const REACCIONES   = ['❤️', '😂', '😍', '👍', '😲'];
-
-const NIVELES = [
-  'Sin experiencia',
-  'Junior (0-2 años)',
-  'Semi-Senior (2-5 años)',
-  'Senior (5+ años)',
-];
-
+const REACCIONES = ['❤️', '😂', '😍', '👍', '😲'];
+const NIVELES = ['Sin experiencia', 'Junior (0-2 años)', 'Semi-Senior (2-5 años)', 'Senior (5+ años)'];
 const COLORS: { id: SocialColor; bg: string; ring: string }[] = [
   { id: 'blue',   bg: 'bg-blue-500',   ring: 'ring-blue-500'   },
   { id: 'purple', bg: 'bg-purple-500', ring: 'ring-purple-500' },
@@ -83,14 +54,12 @@ const COLORS: { id: SocialColor; bg: string; ring: string }[] = [
 function sanitizeText(input: string): string {
   return input.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
 }
-
 function formatFecha(createdAt: FirestoreTimestamp | null): string {
   if (!createdAt?.toDate) return '';
   return createdAt.toDate().toLocaleDateString('es-AR', {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   });
 }
-
 async function crearNotificacion({ uid, titulo, mensaje, tipo }: {
   uid: string; titulo: string; mensaje: string; tipo: string;
 }) {
@@ -106,9 +75,9 @@ function ModalComentarios({ postId, postUserId, onClose }: {
   postId: string; postUserId: string; onClose: () => void;
 }) {
   const user = auth.currentUser;
-  const [comments,     setComments]     = useState<Comment[]>([]);
-  const [texto,        setTexto]        = useState('');
-  const [enviando,     setEnviando]     = useState(false);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [texto, setTexto] = useState('');
+  const [enviando, setEnviando] = useState(false);
   const [respondiendo, setRespondiendo] = useState<{ id: string; nombre: string } | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -118,16 +87,14 @@ function ModalComentarios({ postId, postUserId, onClose }: {
       setComments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Comment)))
     );
   }, [postId]);
-
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 300); }, []);
 
   async function handleLikeComentario(comment: Comment) {
     if (!user) return;
-    const ref   = doc(db, 'posts', postId, 'comments', comment.id);
+    const ref = doc(db, 'posts', postId, 'comments', comment.id);
     const liked = comment.likes?.includes(user.uid);
     await updateDoc(ref, { likes: liked ? arrayRemove(user.uid) : arrayUnion(user.uid) });
   }
-
   async function handleEnviar() {
     if (!user || !texto.trim()) return;
     setEnviando(true);
@@ -215,9 +182,7 @@ function ModalComentarios({ postId, postUserId, onClose }: {
       </div>
     </div>
   );
-}
-
-export default function Profile() {
+    }export default function Profile() {
   const { socialColor, setSocialColor } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -256,11 +221,7 @@ export default function Profile() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u) {
-        loadProfile(u.uid);
-        loadMisPosts(u.uid);
-        setFotoURL(u.photoURL || '');
-      }
+      if (u) { loadProfile(u.uid); loadMisPosts(u.uid); setFotoURL(u.photoURL || ''); }
     });
     return () => unsub();
   }, []);
@@ -275,14 +236,10 @@ export default function Profile() {
       if (snap.exists()) {
         const d = snap.data();
         setForm({
-          name:             d.name             || '',
-          title:            d.title            || '',
-          bio:              d.bio              || '',
-          ciudad:           d.ciudad           || '',
-          cargoDeseado:     d.cargoDeseado     || '',
+          name: d.name || '', title: d.title || '', bio: d.bio || '',
+          ciudad: d.ciudad || '', cargoDeseado: d.cargoDeseado || '',
           nivelExperiencia: d.nivelExperiencia || 'Junior (0-2 años)',
-          disponible:       d.disponible       ?? true,
-          salarioEsperado:  d.salarioEsperado  || '',
+          disponible: d.disponible ?? true, salarioEsperado: d.salarioEsperado || '',
         });
         if (d.photo) setFotoURL(d.photo);
       }
@@ -290,11 +247,7 @@ export default function Profile() {
   };
 
   const loadMisPosts = (uid: string) => {
-    const q = query(
-      collection(db, 'posts'),
-      where('userId', '==', uid),
-      orderBy('createdAt', 'desc'),
-    );
+    const q = query(collection(db, 'posts'), where('userId', '==', uid), orderBy('createdAt', 'desc'));
     onSnapshot(q, (snap) => {
       const posts = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
       setMisPosts(posts);
@@ -303,18 +256,9 @@ export default function Profile() {
   };
 
   const loadFollowStats = (uid: string, zona: TabId) => {
-    const qSeg = query(
-      collection(db, 'follows'),
-      where('followingId', '==', uid),
-      where('zona', '==', zona),
-    );
+    const qSeg = query(collection(db, 'follows'), where('followingId', '==', uid), where('zona', '==', zona));
     onSnapshot(qSeg, (snap) => setSeguidores(snap.size));
-
-    const qSig = query(
-      collection(db, 'follows'),
-      where('followerId', '==', uid),
-      where('zona', '==', zona),
-    );
+    const qSig = query(collection(db, 'follows'), where('followerId', '==', uid), where('zona', '==', zona));
     onSnapshot(qSig, (snap) => setSiguiendo(snap.size));
   };
 
@@ -330,8 +274,9 @@ export default function Profile() {
     setStatus(null);
     try {
       const { url } = await subirArchivoCloudinary(f);
-      setFotoURL(url);
+      await updateProfile(user, { photoURL: url });
       await updateDoc(doc(db, 'users', user.uid), { photo: url, updatedAt: serverTimestamp() });
+      setFotoURL(url);
       setStatus({ tipo: 'exito', texto: '¡Foto actualizada!' });
     } catch (e) {
       console.error('[Profile] foto upload:', e);
@@ -388,9 +333,7 @@ export default function Profile() {
     if (!user || !editTexto.trim()) return;
     setGuardandoEdit(true);
     try {
-      await updateDoc(doc(db, 'posts', postId), {
-        text: sanitizeText(editTexto), editadoEn: serverTimestamp(),
-      });
+      await updateDoc(doc(db, 'posts', postId), { text: sanitizeText(editTexto), editadoEn: serverTimestamp() });
       setEditandoId(null); setEditTexto('');
     } catch (e) { console.error('[Profile] editar:', e); }
     finally { setGuardandoEdit(false); }
@@ -400,16 +343,10 @@ export default function Profile() {
     if (!user) return;
     setReportandoId(null);
     try {
-      const qYaReporto = query(
-        collection(db, 'reports'),
-        where('postId', '==', postId),
-        where('reportadoPor', '==', user.uid),
-      );
+      const qYaReporto = query(collection(db, 'reports'), where('postId', '==', postId), where('reportadoPor', '==', user.uid));
       const yaReporto = await getDocs(qYaReporto);
       if (!yaReporto.empty) return;
-      await addDoc(collection(db, 'reports'), {
-        postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
-      });
+      await addDoc(collection(db, 'reports'), { postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false });
       const snapConteo = await getCountFromServer(query(collection(db, 'reports'), where('postId', '==', postId)));
       if (snapConteo.data().count >= 5) await deleteDoc(doc(db, 'posts', postId));
     } catch (e) { console.error('[Profile] reportar:', e); }
@@ -419,16 +356,10 @@ export default function Profile() {
     const url = `${window.location.origin}/user/${post.userId}`;
     if (navigator.share) {
       navigator.share({ title: 'AG Empleo', text: post.text || 'Mirá esta publicación', url }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(url).catch(() => {});
-    }
+    } else { navigator.clipboard.writeText(url).catch(() => {}); }
   }
 
-  const avatarUrl = fotoURL ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=${
-      tabActiva === 'social' ? '7c3aed' : '3b82f6'
-    }&color=fff&size=128`;
-
+  const avatarUrl = fotoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=${tabActiva === 'social' ? '7c3aed' : '3b82f6'}&color=fff&size=128`;
   const inputCls = 'w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300]';
   const headerGradient = tabActiva === 'social' ? 'from-purple-600 to-purple-800' : 'from-blue-600 to-blue-800';
   const postsZona = misPosts.filter((p) => p.zona === tabActiva);
@@ -437,21 +368,16 @@ export default function Profile() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <Navbar onMenuClick={() => setMenuAbierto(true)} />
       <Menu isOpen={menuAbierto} onClose={() => setMenuAbierto(false)} />
-
       <div className="max-w-lg mx-auto px-4 pt-6 space-y-4">
-
         <div className={`bg-gradient-to-r ${headerGradient} rounded-3xl p-4 text-white text-center`}>
           <p className="text-xs font-black uppercase tracking-widest opacity-75 mb-0.5">Perfil activo</p>
           <p className="text-lg font-black">{tabActiva === 'social' ? '🌐 Zona Social' : '💼 Zona Empleo'}</p>
         </div>
-
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
             <img src={avatarUrl} alt="foto de perfil" className="w-24 h-24 rounded-full border-4 border-[--sc-100] object-cover shadow-md" />
             <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--sc-600)] flex items-center justify-center cursor-pointer ring-2 ring-white dark:ring-gray-950 active:scale-90 transition-transform">
-              {subiendoFoto
-                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <CameraIcon className="w-4 h-4 text-white" />}
+              {subiendoFoto ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <CameraIcon className="w-4 h-4 text-white" />}
               <input type="file" accept="image/*" onChange={handleFotoUpload} className="hidden" disabled={subiendoFoto} />
             </label>
           </div>
@@ -460,13 +386,12 @@ export default function Profile() {
             <p className="text-sm text-gray-500 dark:text-gray-400">{form.title || 'Tu título profesional'}</p>
             {form.ciudad && <p className="text-xs text-gray-400 dark:text-gray-500">📍 {form.ciudad}</p>}
           </div>
-
           <div className="flex gap-6">
             {[
-              { value: misPosts.length, label: 'Posts',      icon: <DocumentTextIcon className="w-3.5 h-3.5" /> },
-              { value: seguidores,      label: 'Seguidores' },
-              { value: siguiendo,       label: 'Siguiendo'  },
-              { value: totalLikes,      label: 'Likes',      icon: <HeartIcon className="w-3.5 h-3.5" /> },
+              { value: misPosts.length, label: 'Posts', icon: <DocumentTextIcon className="w-3.5 h-3.5" /> },
+              { value: seguidores, label: 'Seguidores' },
+              { value: siguiendo, label: 'Siguiendo' },
+              { value: totalLikes, label: 'Likes', icon: <HeartIcon className="w-3.5 h-3.5" /> },
             ].map((s, i, arr) => (
               <React.Fragment key={s.label}>
                 <div className="flex flex-col items-center">
@@ -478,18 +403,14 @@ export default function Profile() {
             ))}
           </div>
         </div>
-
         <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
           {(['social', 'empleo'] as TabId[]).map((t) => (
             <button key={t} onClick={() => setTabActiva(t)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${
-                tabActiva === t ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
-              }`}>
+              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${tabActiva === t ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
               {t === 'social' ? '🌐 Social' : '💼 Empleo'}
             </button>
           ))}
         </div>
-
         {tabActiva === 'social' && (
           <>
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
@@ -505,9 +426,9 @@ export default function Profile() {
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
               <h2 className="font-black text-gray-800 dark:text-white text-base">Editar perfil social</h2>
               {([
-                { label: 'Nombre completo',    field: 'name'   as const, placeholder: 'Ej: Juan Pérez'        },
-                { label: 'Título profesional', field: 'title'  as const, placeholder: 'Ej: Desarrollador Web' },
-                { label: 'Ciudad',             field: 'ciudad' as const, placeholder: 'Ej: Buenos Aires'      },
+                { label: 'Nombre completo', field: 'name' as const, placeholder: 'Ej: Juan Pérez' },
+                { label: 'Título profesional', field: 'title' as const, placeholder: 'Ej: Desarrollador Web' },
+                { label: 'Ciudad', field: 'ciudad' as const, placeholder: 'Ej: Buenos Aires' },
               ]).map(({ label, field, placeholder }) => (
                 <div key={field} className="space-y-1">
                   <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</label>
@@ -527,7 +448,6 @@ export default function Profile() {
             </div>
           </>
         )}
-
         {tabActiva === 'empleo' && (
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <h2 className="font-black text-gray-800 dark:text-white text-base">Perfil de empleo</h2>
@@ -566,27 +486,22 @@ export default function Profile() {
             </div>
           </div>
         )}
-
         {status && (
           <div className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${status.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`} role="alert">
             {status.tipo === 'exito' ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />}
             {status.texto}
           </div>
         )}
-
         <button onClick={saveProfile} disabled={guardando}
           className="w-full bg-[--sc-500] hover:bg-[--sc-600] text-white font-black py-4 rounded-2xl transition-colors disabled:opacity-60">
           {guardando ? 'Guardando...' : 'Guardar perfil'}
         </button>
-
         {postsZona.length > 0 && (
           <div className="space-y-3">
-            <h2 className="font-black text-gray-800 dark:text-white text-base px-1">
-              Mis publicaciones ({postsZona.length})
-            </h2>
+            <h2 className="font-black text-gray-800 dark:text-white text-base px-1">Mis publicaciones ({postsZona.length})</h2>
             {postsZona.map((p) => {
               const miReaccion = p.reactions?.[user?.uid ?? ''];
-              const editando   = editandoId === p.id;
+              const editando = editandoId === p.id;
               const avatarFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(p.userName || 'U')}&background=7c3aed&color=fff`;
               return (
                 <article key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -607,7 +522,6 @@ export default function Profile() {
                       </button>
                     </div>
                   </div>
-
                   {reportandoId === p.id && (
                     <div className="mx-4 mb-3 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-2xl flex items-center justify-between">
                       <p className="text-xs text-orange-700 font-bold">¿Reportar esta publicación?</p>
@@ -617,7 +531,6 @@ export default function Profile() {
                       </div>
                     </div>
                   )}
-
                   {editando ? (
                     <div className="px-4 pb-3 space-y-2">
                       <textarea value={editTexto}
@@ -637,20 +550,17 @@ export default function Profile() {
                   ) : (
                     p.text && <p className="px-4 pb-3 text-gray-800 dark:text-gray-200 text-sm leading-relaxed">{p.text}</p>
                   )}
-
                   {p.mediaUrl && (
                     p.mediaType === 'video'
                       ? <video src={p.mediaUrl} controls className="w-full max-h-80 object-cover bg-black" />
                       : <img src={p.mediaUrl} alt="Imagen del post" className="w-full max-h-80 object-cover" loading="lazy" />
                   )}
-
                   {Object.keys(p.reactions || {}).length > 0 && (
                     <div className="flex items-center gap-1 px-4 pb-2">
                       {Object.values(p.reactions).slice(0, 3).map((emoji, i) => <span key={i} className="text-base">{emoji}</span>)}
                       <span className="text-xs text-gray-400 ml-1">{Object.keys(p.reactions).length}</span>
                     </div>
                   )}
-
                   <div className="px-4 py-3 flex items-center gap-5 border-t border-gray-100 dark:border-gray-800">
                     <div className="relative">
                       <button onClick={() => setReaccionandoId(reaccionandoId === p.id ? null : p.id)}
@@ -683,7 +593,6 @@ export default function Profile() {
             })}
           </div>
         )}
-
         {postsZona.length === 0 && (
           <div className="text-center py-10 text-gray-400 dark:text-gray-600">
             <p className="text-4xl mb-2">📭</p>
@@ -691,14 +600,12 @@ export default function Profile() {
           </div>
         )}
       </div>
-
       {comentandoId && (
         <ModalComentarios postId={comentandoId} postUserId={comentandoUid}
           onClose={() => { setComentandoId(null); setComentandoUid(''); }} />
       )}
-
       {reaccionandoId && <div className="fixed inset-0 z-10" onClick={() => setReaccionandoId(null)} />}
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-          }
+}
