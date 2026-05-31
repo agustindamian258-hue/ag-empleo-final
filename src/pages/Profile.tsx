@@ -220,18 +220,6 @@ export default function Profile() {
     if (zona) setTabActiva(zona);
   }, [location.state]);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      if (u) { loadProfile(u.uid); loadMisPosts(u.uid); setFotoURL(u.photoURL || ''); }
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    if (user) loadFollowStats(user.uid, tabActiva);
-  }, [tabActiva, user]);
-
   const loadProfile = async (uid: string) => {
     try {
       const snap = await getDoc(doc(db, 'users', uid));
@@ -243,14 +231,11 @@ export default function Profile() {
           nivelExperiencia: d.nivelExperiencia || 'Junior (0-2 años)',
           disponible: d.disponible ?? true, salarioEsperado: d.salarioEsperado || '',
         });
-        // FIX 1: Firestore es la fuente de verdad para la foto.
-        // Si existe en Firestore, tiene prioridad sobre Auth (evita inconsistencias).
-        if (d.photo) setFotoURL(d.photo);
+        if (d.photo) setFotoURL(`${d.photo}?t=${Date.now()}`);
       }
     } catch (e) { console.error('[Profile] load:', e); }
   };
 
-  // FIX 2: Se agrega useCallback y se retorna el unsubscribe para evitar memory leak.
   const loadMisPosts = useCallback((uid: string) => {
     const q = query(collection(db, 'posts'), where('userId', '==', uid), orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snap) => {
@@ -260,7 +245,6 @@ export default function Profile() {
     });
   }, []);
 
-  // FIX 3: Se retornan los unsubscribes para evitar memory leak en los 2 listeners.
   const loadFollowStats = useCallback((uid: string, zona: TabId) => {
     const qSeg = query(collection(db, 'follows'), where('followingId', '==', uid), where('zona', '==', zona));
     const unsubSeg = onSnapshot(qSeg, (snap) => setSeguidores(snap.size));
@@ -269,7 +253,6 @@ export default function Profile() {
     return () => { unsubSeg(); unsubSig(); };
   }, []);
 
-  // FIX 4: Se usa el cleanup de loadMisPosts dentro del efecto de auth.
   useEffect(() => {
     let unsubPosts: (() => void) | undefined;
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -280,13 +263,9 @@ export default function Profile() {
         setFotoURL(u.photoURL || '');
       }
     });
-    return () => {
-      unsub();
-      unsubPosts?.();
-    };
+    return () => { unsub(); unsubPosts?.(); };
   }, [loadMisPosts]);
 
-  // FIX 5: Cleanup del efecto de follow stats.
   useEffect(() => {
     if (!user) return;
     return loadFollowStats(user.uid, tabActiva);
@@ -304,22 +283,13 @@ export default function Profile() {
     setStatus(null);
     try {
       const { url } = await subirArchivoCloudinary(f);
-
-      // FIX 6 — CORRECCIÓN PRINCIPAL DEL BUG:
-      // Se ejecutan updateProfile y updateDoc en paralelo con Promise.all.
-      // Luego se llama auth.currentUser.reload() para sincronizar el objeto
-      // Auth en memoria con el nuevo photoURL, forzando que onAuthStateChanged
-      // se dispare con los datos actualizados.
       await Promise.all([
         updateProfile(user, { photoURL: url }),
         updateDoc(doc(db, 'users', user.uid), { photo: url, updatedAt: serverTimestamp() }),
       ]);
-
-      // Recargar el usuario de Auth para sincronizar el estado interno de Firebase.
       await auth.currentUser?.reload();
-
-      // Actualizar el estado local con la nueva URL inmediatamente.
-      setFotoURL(url);
+      // FIX 7: Timestamp fuerza al navegador a no usar la imagen cacheada.
+      setFotoURL(`${url}?t=${Date.now()}`);
       setStatus({ tipo: 'exito', texto: '¡Foto actualizada!' });
     } catch (e) {
       console.error('[Profile] foto upload:', e);
@@ -651,4 +621,4 @@ export default function Profile() {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-                    }
+}
