@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { User, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import {
   doc, getDoc, updateDoc, serverTimestamp, collection,
@@ -182,7 +182,9 @@ function ModalComentarios({ postId, postUserId, onClose }: {
       </div>
     </div>
   );
-    }export default function Profile() {
+}
+
+export default function Profile() {
   const { socialColor, setSocialColor } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -241,26 +243,54 @@ function ModalComentarios({ postId, postUserId, onClose }: {
           nivelExperiencia: d.nivelExperiencia || 'Junior (0-2 años)',
           disponible: d.disponible ?? true, salarioEsperado: d.salarioEsperado || '',
         });
+        // FIX 1: Firestore es la fuente de verdad para la foto.
+        // Si existe en Firestore, tiene prioridad sobre Auth (evita inconsistencias).
         if (d.photo) setFotoURL(d.photo);
       }
     } catch (e) { console.error('[Profile] load:', e); }
   };
 
-  const loadMisPosts = (uid: string) => {
+  // FIX 2: Se agrega useCallback y se retorna el unsubscribe para evitar memory leak.
+  const loadMisPosts = useCallback((uid: string) => {
     const q = query(collection(db, 'posts'), where('userId', '==', uid), orderBy('createdAt', 'desc'));
-    onSnapshot(q, (snap) => {
+    return onSnapshot(q, (snap) => {
       const posts = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
       setMisPosts(posts);
       setTotalLikes(posts.reduce((acc, p) => acc + Object.keys(p.reactions || {}).length, 0));
     });
-  };
+  }, []);
 
-  const loadFollowStats = (uid: string, zona: TabId) => {
+  // FIX 3: Se retornan los unsubscribes para evitar memory leak en los 2 listeners.
+  const loadFollowStats = useCallback((uid: string, zona: TabId) => {
     const qSeg = query(collection(db, 'follows'), where('followingId', '==', uid), where('zona', '==', zona));
-    onSnapshot(qSeg, (snap) => setSeguidores(snap.size));
+    const unsubSeg = onSnapshot(qSeg, (snap) => setSeguidores(snap.size));
     const qSig = query(collection(db, 'follows'), where('followerId', '==', uid), where('zona', '==', zona));
-    onSnapshot(qSig, (snap) => setSiguiendo(snap.size));
-  };
+    const unsubSig = onSnapshot(qSig, (snap) => setSiguiendo(snap.size));
+    return () => { unsubSeg(); unsubSig(); };
+  }, []);
+
+  // FIX 4: Se usa el cleanup de loadMisPosts dentro del efecto de auth.
+  useEffect(() => {
+    let unsubPosts: (() => void) | undefined;
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (u) {
+        loadProfile(u.uid);
+        unsubPosts = loadMisPosts(u.uid);
+        setFotoURL(u.photoURL || '');
+      }
+    });
+    return () => {
+      unsub();
+      unsubPosts?.();
+    };
+  }, [loadMisPosts]);
+
+  // FIX 5: Cleanup del efecto de follow stats.
+  useEffect(() => {
+    if (!user) return;
+    return loadFollowStats(user.uid, tabActiva);
+  }, [tabActiva, user, loadFollowStats]);
 
   async function handleFotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -274,8 +304,21 @@ function ModalComentarios({ postId, postUserId, onClose }: {
     setStatus(null);
     try {
       const { url } = await subirArchivoCloudinary(f);
-      await updateProfile(user, { photoURL: url });
-      await updateDoc(doc(db, 'users', user.uid), { photo: url, updatedAt: serverTimestamp() });
+
+      // FIX 6 — CORRECCIÓN PRINCIPAL DEL BUG:
+      // Se ejecutan updateProfile y updateDoc en paralelo con Promise.all.
+      // Luego se llama auth.currentUser.reload() para sincronizar el objeto
+      // Auth en memoria con el nuevo photoURL, forzando que onAuthStateChanged
+      // se dispare con los datos actualizados.
+      await Promise.all([
+        updateProfile(user, { photoURL: url }),
+        updateDoc(doc(db, 'users', user.uid), { photo: url, updatedAt: serverTimestamp() }),
+      ]);
+
+      // Recargar el usuario de Auth para sincronizar el estado interno de Firebase.
+      await auth.currentUser?.reload();
+
+      // Actualizar el estado local con la nueva URL inmediatamente.
       setFotoURL(url);
       setStatus({ tipo: 'exito', texto: '¡Foto actualizada!' });
     } catch (e) {
@@ -608,4 +651,4 @@ function ModalComentarios({ postId, postUserId, onClose }: {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-}
+        }
