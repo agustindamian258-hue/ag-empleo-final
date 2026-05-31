@@ -651,4 +651,4 @@ export default function Profile() {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-        }
+                    }
