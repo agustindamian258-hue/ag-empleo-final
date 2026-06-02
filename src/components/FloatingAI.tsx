@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, PaperAirplaneIcon, PaperClipIcon } from '@heroicons/react/24/solid';
 import { auth, db } from '../app/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Mensaje {
   id:      string;
@@ -13,14 +11,13 @@ interface Mensaje {
 
 interface GeminiMessage {
   role:  'user' | 'model';
-  parts: { text: string }[];
+  parts: ({ text: string } | { inline_data: { mime_type: string; data: string } })[];
 }
-
-// ─── Constantes ───────────────────────────────────────────────────────────────
 
 const MAX_HISTORIAL = 10;
 const MAX_INPUT     = 300;
 const TIMEOUT_MS    = 30000;
+const MAX_PDF_MB    = 10;
 
 const SYSTEM_PROMPT = `Sos el asistente oficial de "AG Empleo", una app argentina de búsqueda de trabajo.
 Respondé siempre en español rioplatense, de forma amable, directa y profesional.
@@ -32,6 +29,13 @@ Cuando el usuario te saluda por primera vez, saludalo por su nombre y ofrecele e
 5. 🌐 Mejorar mi perfil de LinkedIn
 6. 💬 Otra consulta laboral
 
+Cuando el usuario suba un CV en PDF, analizalo completamente y devolvé una versión mejorada con:
+- Resumen profesional potente
+- Experiencia laboral optimizada con verbos de acción
+- Habilidades relevantes destacadas
+- Formato y estructura profesional en texto
+- Consejos específicos para pasar filtros ATS
+
 Conocés estas secciones de la app: Mapa de Changas, Empresas A-Z, Generador de CV, Feed social y Reels.
 Si te preguntan algo fuera del ámbito laboral, llevá la charla de vuelta al trabajo amablemente.
 Respondé de forma concisa. Usá emojis con moderación.`;
@@ -39,10 +43,8 @@ Respondé de forma concisa. Usá emojis con moderación.`;
 const MENSAJE_INICIAL: Mensaje = {
   id:      'init',
   role:    'ai',
-  content: '¡Hola! Soy el asistente de AG Empleo 💼 ¿En qué te puedo ayudar hoy?',
+  content: '¡Hola! Soy el asistente de AG Empleo 💼 ¿En qué te puedo ayudar hoy?\n\nPodés escribirme o adjuntar tu CV en PDF con el botón 📎',
 };
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
 
 function toGeminiMessages(historial: Mensaje[]): GeminiMessage[] {
   return historial
@@ -53,7 +55,14 @@ function toGeminiMessages(historial: Mensaje[]): GeminiMessage[] {
     }));
 }
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function FloatingAI() {
   const [isOpen,    setIsOpen]    = useState<boolean>(false);
@@ -61,10 +70,12 @@ export default function FloatingAI() {
   const [cargando,  setCargando]  = useState<boolean>(false);
   const [historial, setHistorial] = useState<Mensaje[]>([MENSAJE_INICIAL]);
   const [error,     setError]     = useState<string | null>(null);
+  const [pdfFile,   setPdfFile]   = useState<File | null>(null);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef  = useRef<HTMLInputElement>(null);
-  const abortRef  = useRef<AbortController | null>(null);
+  const scrollRef  = useRef<HTMLDivElement>(null);
+  const inputRef   = useRef<HTMLInputElement>(null);
+  const abortRef   = useRef<AbortController | null>(null);
+  const fileRef    = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -93,8 +104,8 @@ export default function FloatingAI() {
         const profesion = d.profesion   ?? '';
         return [
           `El usuario se llama ${nombre} y vive en ${ciudad}.`,
-          profesion ? `Su profesión es: ${profesion}.`  : '',
-          desc      ? `Su descripción es: "${desc}".`   : '',
+          profesion ? `Su profesión es: ${profesion}.` : '',
+          desc      ? `Su descripción es: "${desc}".`  : '',
         ].filter(Boolean).join(' ');
       }
     } catch (e) {
@@ -103,9 +114,25 @@ export default function FloatingAI() {
     return '';
   }, []);
 
+  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.type !== 'application/pdf') {
+      setError('Solo se aceptan archivos PDF.');
+      return;
+    }
+    if (f.size > MAX_PDF_MB * 1024 * 1024) {
+      setError(`El PDF no puede superar ${MAX_PDF_MB}MB.`);
+      return;
+    }
+    setPdfFile(f);
+    setError(null);
+    setMensaje(`Analizá mi CV: ${f.name}`);
+  };
+
   const handleEnviar = useCallback(async (): Promise<void> => {
     const userMsg = mensaje.trim();
-    if (!userMsg || cargando) return;
+    if ((!userMsg && !pdfFile) || cargando) return;
 
     abortRef.current?.abort();
     abortRef.current = new AbortController();
@@ -113,7 +140,7 @@ export default function FloatingAI() {
     const msgUsuario: Mensaje = {
       id:      `user_${Date.now()}`,
       role:    'user',
-      content: userMsg,
+      content: userMsg || `📎 CV adjunto: ${pdfFile?.name}`,
     };
 
     setMensaje('');
@@ -127,28 +154,45 @@ export default function FloatingAI() {
 
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string;
-      if (!apiKey) throw new Error('Clave de API no configurada. Agregá VITE_GEMINI_API_KEY en tus secrets.');
+      if (!apiKey) throw new Error('Clave de API no configurada.');
 
       const perfil      = await obtenerPerfilUsuario();
       const systemFinal = perfil
         ? `${SYSTEM_PROMPT}\n\nContexto del usuario: ${perfil}`
         : SYSTEM_PROMPT;
 
-      const mensajesGemini = toGeminiMessages(historialActualizado.slice(-MAX_HISTORIAL));
-
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+      let contents: GeminiMessage[];
+
+      if (pdfFile) {
+        const base64 = await fileToBase64(pdfFile);
+        const histPrevio = toGeminiMessages(historial.slice(-MAX_HISTORIAL));
+        contents = [
+          ...histPrevio,
+          {
+            role: 'user',
+            parts: [
+              { inline_data: { mime_type: 'application/pdf', data: base64 } },
+              { text: userMsg || 'Analizá este CV y devolveme una versión mejorada con consejos para pasar filtros ATS.' },
+            ],
+          },
+        ];
+        setPdfFile(null);
+        if (fileRef.current) fileRef.current.value = '';
+      } else {
+        contents = toGeminiMessages(historialActualizado.slice(-MAX_HISTORIAL));
+      }
 
       const response = await fetch(url, {
         method:  'POST',
         signal:  abortRef.current.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: systemFinal }],
-          },
-          contents:        mensajesGemini,
+          system_instruction: { parts: [{ text: systemFinal }] },
+          contents,
           generationConfig: {
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,
             temperature:     0.7,
           },
         }),
@@ -156,8 +200,7 @@ export default function FloatingAI() {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        const errMsg  = errData?.error?.message ?? `Error ${response.status}`;
-        throw new Error(errMsg);
+        throw new Error(errData?.error?.message ?? `Error ${response.status}`);
       }
 
       const data  = await response.json();
@@ -183,7 +226,7 @@ export default function FloatingAI() {
       clearTimeout(timeoutId);
       setCargando(false);
     }
-  }, [mensaje, cargando, historial, obtenerPerfilUsuario]);
+  }, [mensaje, pdfFile, cargando, historial, obtenerPerfilUsuario]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -196,6 +239,8 @@ export default function FloatingAI() {
     setHistorial([MENSAJE_INICIAL]);
     setError(null);
     setMensaje('');
+    setPdfFile(null);
+    if (fileRef.current) fileRef.current.value = '';
   };
 
   return (
@@ -227,30 +272,20 @@ export default function FloatingAI() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleLimpiar}
-                aria-label="Nueva conversación"
-                title="Nueva conversación"
-                className="p-1 opacity-70 hover:opacity-100 active:scale-90 transition-all text-xs font-bold"
-              >
+              <button onClick={handleLimpiar} aria-label="Nueva conversación" title="Nueva conversación"
+                className="p-1 opacity-70 hover:opacity-100 active:scale-90 transition-all text-xs font-bold">
                 ↺
               </button>
-              <button
-                onClick={() => setIsOpen(false)}
-                aria-label="Cerrar"
-                className="p-1 active:scale-90 transition-transform"
-              >
+              <button onClick={() => setIsOpen(false)} aria-label="Cerrar"
+                className="p-1 active:scale-90 transition-transform">
                 <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
           </div>
 
-          <div
-            ref={scrollRef}
+          <div ref={scrollRef}
             className="flex-grow p-4 overflow-y-auto bg-gray-50 dark:bg-gray-950 space-y-3"
-            role="log"
-            aria-live="polite"
-          >
+            role="log" aria-live="polite">
             {historial.map(chat => (
               <div key={chat.id} className={`flex ${chat.role === 'ai' ? 'justify-start' : 'justify-end'}`}>
                 <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-[85%] whitespace-pre-wrap ${
@@ -280,21 +315,36 @@ export default function FloatingAI() {
             )}
           </div>
 
+          {pdfFile && (
+            <div className="px-3 pt-2 bg-white dark:bg-gray-900 flex items-center gap-2">
+              <div className="flex-1 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-3 py-2 flex items-center gap-2">
+                <span className="text-green-600 text-xs">📎</span>
+                <span className="text-green-700 dark:text-green-400 text-xs font-bold truncate">{pdfFile.name}</span>
+              </div>
+              <button onClick={() => { setPdfFile(null); if (fileRef.current) fileRef.current.value = ''; }}
+                className="text-gray-400 text-xs p-1 active:scale-90">✕</button>
+            </div>
+          )}
+
           <div className="p-3 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex gap-2 shrink-0">
+            <label className="w-11 h-11 flex items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800 cursor-pointer active:scale-95 transition-transform shrink-0">
+              <PaperClipIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              <input ref={fileRef} type="file" accept="application/pdf" onChange={handlePdfChange} className="hidden" disabled={cargando} />
+            </label>
             <input
               ref={inputRef}
               type="text"
               value={mensaje}
               onChange={e => { if (e.target.value.length <= MAX_INPUT) setMensaje(e.target.value); }}
               onKeyDown={handleKeyDown}
-              placeholder="Escribí tu mensaje..."
+              placeholder={pdfFile ? 'Agregá instrucciones (opcional)...' : 'Escribí tu mensaje...'}
               className="flex-grow bg-gray-100 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[--sc-500] disabled:opacity-50"
               disabled={cargando}
               maxLength={MAX_INPUT}
             />
             <button
               onClick={handleEnviar}
-              disabled={cargando || !mensaje.trim()}
+              disabled={cargando || (!mensaje.trim() && !pdfFile)}
               className="bg-[--sc-500] w-11 h-11 flex items-center justify-center rounded-2xl text-white active:scale-95 transition-transform disabled:opacity-40 shrink-0"
             >
               <PaperAirplaneIcon className="w-5 h-5" />
@@ -304,4 +354,4 @@ export default function FloatingAI() {
       )}
     </>
   );
-                   }
+}
