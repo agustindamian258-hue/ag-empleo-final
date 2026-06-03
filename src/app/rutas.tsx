@@ -39,7 +39,7 @@ function ProtectedRoute({ user, loading, children }: ProtectedRouteProps) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
-const RUTAS_SOCIAL = ['/social', '/reels', '/search'];
+const RUTAS_SOCIAL = ['/social', '/reels', '/search', '/notificaciones-social'];
 
 function SyncMode() {
   const location = useLocation();
