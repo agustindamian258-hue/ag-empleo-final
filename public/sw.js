@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_VERSION = 'ag-empleo-v3';
+const CACHE_VERSION = 'ag-empleo-v4';
 const CACHE = CACHE_VERSION;
 
 const ASSETS = [
@@ -8,7 +8,6 @@ const ASSETS = [
   '/manifest.json',
 ];
 
-// ── INSTALL ──────────────────────────────────────────
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE)
@@ -18,7 +17,6 @@ self.addEventListener('install', (e) => {
   );
 });
 
-// ── ACTIVATE ─────────────────────────────────────────
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
@@ -37,7 +35,6 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// ── FETCH ─────────────────────────────────────────────
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
 
@@ -66,4 +63,9 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.match(e.request))
   );
+});
+
+// Escuchar mensaje para activar inmediatamente
+self.addEventListener('message', (e) => {
+  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
