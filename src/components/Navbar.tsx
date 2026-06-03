@@ -186,4 +186,4 @@ function NavLink({ to, label, active, color, bg, children }: {
       </span>
     </Link>
   );
-}
+        }
