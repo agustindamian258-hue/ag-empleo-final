@@ -1,3 +1,4 @@
+// src/components/Navbar.tsx
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -52,6 +53,8 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
     color: isActive(path) ? modeColor : '#9ca3af',
   });
 
+  const alertaRuta = isSocial ? '/notificaciones-social' : '/notificaciones';
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 w-full bg-white/96 dark:bg-gray-900/96 backdrop-blur-xl z-[100]"
@@ -72,7 +75,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           <span className="text-[9px] text-gray-400">menú</span>
         </button>
 
-        {/* Inicio — siempre visible en ambos modos */}
+        {/* Inicio */}
         {isSocial ? (
           <NavLink to="/social" label="Inicio" active={isActive('/social')} color={modeColor} bg={modeBg}>
             <HomeIcon className="w-[22px] h-[22px]" style={iconStyle('/social')} />
@@ -83,7 +86,7 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           </NavLink>
         )}
 
-        {/* Botón central — Publicar (social) / Empleos (empleo) */}
+        {/* Botón central */}
         <div className="flex flex-col items-center" style={{ marginTop: '-22px' }}>
           <button
             onClick={isSocial ? onPublishClick : () => navigate('/jobs')}
@@ -129,10 +132,16 @@ export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
           </NavLink>
         )}
 
-        {/* Alertas — siempre visible */}
-        <NavLink to="/notificaciones" label="Alertas" active={isActive('/notificaciones')} color={modeColor} bg={modeBg}>
+        {/* Alertas — diferenciado por modo */}
+        <NavLink
+          to={alertaRuta}
+          label="Alertas"
+          active={isActive(alertaRuta)}
+          color={modeColor}
+          bg={modeBg}
+        >
           <div className="relative">
-            <BellIcon className="w-[22px] h-[22px]" style={iconStyle('/notificaciones')} />
+            <BellIcon className="w-[22px] h-[22px]" style={iconStyle(alertaRuta)} />
             {sinLeer > 0 && (
               <span
                 className="absolute -top-1.5 -right-1.5 flex items-center justify-center text-white font-black rounded-full"
@@ -177,4 +186,4 @@ function NavLink({ to, label, active, color, bg, children }: {
       </span>
     </Link>
   );
-      }
+}
