@@ -1,3 +1,4 @@
+// src/pages/Notifications.tsx
 import { useEffect, useRef, useState } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot,
@@ -5,7 +6,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../app/firebase';
 import { useTheme } from '../context/ThemeContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import {
@@ -43,6 +44,9 @@ const BG: Record<string, string> = {
   mensaje:   'bg-blue-50   dark:bg-blue-950/40',
 };
 
+const TIPOS_SOCIAL = ['like', 'comentario', 'reaccion', 'seguidor', 'mensaje'];
+const TIPOS_EMPLEO = ['empleo', 'sistema'];
+
 function timeAgo(n: Notif): string {
   if (!n.creadoEn) return '';
   let seconds: number;
@@ -61,7 +65,10 @@ function timeAgo(n: Notif): string {
 export default function Notifications() {
   const { user }   = useTheme();
   const navigate   = useNavigate();
+  const location   = useLocation();
   const holdTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const esSocial = location.pathname === '/notificaciones-social';
 
   const [notifs,      setNotifs]      = useState<Notif[]>([]);
   const [cargando,    setCargando]    = useState(true);
@@ -83,13 +90,20 @@ export default function Notifications() {
     return () => unsub();
   }, [user]);
 
+  // Filtro por modo
+  const notifsFiltradas = notifs.filter(n =>
+    esSocial
+      ? TIPOS_SOCIAL.includes(n.tipo)
+      : TIPOS_EMPLEO.includes(n.tipo)
+  );
+
   async function marcarLeida(id: string) {
     await updateDoc(doc(db, 'notifications', id), { leida: true });
   }
 
   async function marcarTodas() {
     const batch = writeBatch(db);
-    notifs.filter(n => !n.leida).forEach(n => {
+    notifsFiltradas.filter(n => !n.leida).forEach(n => {
       batch.update(doc(db, 'notifications', n.id), { leida: true });
     });
     await batch.commit();
@@ -105,7 +119,7 @@ export default function Notifications() {
 
   async function eliminarLeidas() {
     const batch = writeBatch(db);
-    notifs.filter(n => n.leida).forEach(n => batch.delete(doc(db, 'notifications', n.id)));
+    notifsFiltradas.filter(n => n.leida).forEach(n => batch.delete(doc(db, 'notifications', n.id)));
     await batch.commit();
   }
 
@@ -123,7 +137,6 @@ export default function Notifications() {
     if (n.tipo === 'mensaje') navigate('/messages');
   }
 
-  // ✅ Corregido: onLongPress reemplazado por onTouchStart + setTimeout
   function handleTouchStart(id: string) {
     holdTimer.current = setTimeout(() => {
       setModoSelec(true);
@@ -135,8 +148,8 @@ export default function Notifications() {
     if (holdTimer.current) clearTimeout(holdTimer.current);
   }
 
-  const sinLeer   = notifs.filter(n => !n.leida).length;
-  const conLeidas = notifs.filter(n => n.leida).length;
+  const sinLeer   = notifsFiltradas.filter(n => !n.leida).length;
+  const conLeidas = notifsFiltradas.filter(n => n.leida).length;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
@@ -170,7 +183,7 @@ export default function Notifications() {
                 Limpiar
               </button>
             )}
-            {notifs.length > 0 && (
+            {notifsFiltradas.length > 0 && (
               <button onClick={() => { setModoSelec(p => !p); setSeleccion(new Set()); }}
                 className="text-xs font-bold text-gray-400 active:opacity-60 px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800">
                 {modoSelec ? 'Cancelar' : 'Seleccionar'}
@@ -193,7 +206,7 @@ export default function Notifications() {
           <div className="flex justify-center pt-16">
             <div className="w-8 h-8 border-4 border-[--sc-500] border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : notifs.length === 0 ? (
+        ) : notifsFiltradas.length === 0 ? (
           <div className="flex flex-col items-center gap-3 pt-20 text-center">
             <BellIcon className="w-16 h-16 text-gray-200 dark:text-gray-700" />
             <p className="font-black text-gray-400 dark:text-gray-500">Sin notificaciones</p>
@@ -201,7 +214,7 @@ export default function Notifications() {
           </div>
         ) : (
           <div className="space-y-2">
-            {notifs.map(n => {
+            {notifsFiltradas.map(n => {
               const seleccionada = seleccion.has(n.id);
               const icono = ICONO[n.tipo] ?? ICONO.sistema;
               const bg    = BG[n.tipo]    ?? BG.sistema;
