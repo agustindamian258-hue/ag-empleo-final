@@ -65,22 +65,22 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
       <Routes>
         <Route path="/login" element={loading ? <LoadingScreen /> : !user ? <Login /> : <Navigate to="/" replace />} />
 
-        <Route path="/"               element={PR(<Home />)}          />
-        <Route path="/jobs"           element={PR(<Jobs />)}          />
-        <Route path="/companies"      element={PR(<Companies />)}     />
-        <Route path="/cv"             element={PR(<CVBuilder />)}     />
-        <Route path="/mapa"           element={PR(<MapPage />)}       />
-        <Route path="/social"         element={PR(<Feed />)}          />
-        <Route path="/reels"          element={PR(<Reels />)}         />
-        <Route path="/profile"        element={PR(<Profile />)}       />
-        <Route path="/user/:uid"      element={PR(<UserProfile />)}   />
-        <Route path="/search"         element={PR(<SearchUsers />)}   />
-        <Route path="/privacidad"     element={PR(<Privacidad />)}    />
-        <Route path="/notificaciones" element={PR(<Notifications />)} />
-        <Route path="/messages"       element={PR(<Messages />)}      />
-        <Route path="/chat/:chatId"   element={PR(<Chat />)}          />
+        <Route path="/"                      element={PR(<Home />)}          />
+        <Route path="/jobs"                  element={PR(<Jobs />)}          />
+        <Route path="/companies"             element={PR(<Companies />)}     />
+        <Route path="/cv"                    element={PR(<CVBuilder />)}     />
+        <Route path="/mapa"                  element={PR(<MapPage />)}       />
+        <Route path="/social"                element={PR(<Feed />)}          />
+        <Route path="/reels"                 element={PR(<Reels />)}         />
+        <Route path="/profile"               element={PR(<Profile />)}       />
+        <Route path="/user/:uid"             element={PR(<UserProfile />)}   />
+        <Route path="/search"                element={PR(<SearchUsers />)}   />
+        <Route path="/privacidad"            element={PR(<Privacidad />)}    />
+        <Route path="/notificaciones"        element={PR(<Notifications />)} />
+        <Route path="/notificaciones-social" element={PR(<Notifications />)} />
+        <Route path="/messages"              element={PR(<Messages />)}      />
+        <Route path="/chat/:chatId"          element={PR(<Chat />)}          />
 
-        {/* 404 — usuarios logueados ven la página, no logueados van a login */}
         <Route path="*" element={user ? <NotFound /> : <Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
