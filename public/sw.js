@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_VERSION = 'ag-empleo-v2';
+const CACHE_VERSION = 'ag-empleo-v3';
 const CACHE = CACHE_VERSION;
 
 const ASSETS = [
@@ -39,10 +39,8 @@ self.addEventListener('activate', (e) => {
 
 // ── FETCH ─────────────────────────────────────────────
 self.addEventListener('fetch', (e) => {
-  // Ignorar métodos no-GET
   if (e.request.method !== 'GET') return;
 
-  // Ignorar Firebase / Firestore / APIs externas
   const url = e.request.url;
   if (
     url.includes('firestore') ||
@@ -52,13 +50,11 @@ self.addEventListener('fetch', (e) => {
     url.includes('generativelanguage.googleapis.com')
   ) return;
 
-  // Ignorar extensiones de Chrome
   if (url.startsWith('chrome-extension://')) return;
 
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        // Solo cachear respuestas válidas
         if (!res || res.status !== 200 || res.type === 'opaque') {
           return res;
         }
