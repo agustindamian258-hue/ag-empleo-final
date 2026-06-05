@@ -3,22 +3,23 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { User } from 'firebase/auth';
 import { useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import Home          from '../pages/Home';
-import Jobs          from '../pages/Jobs';
-import Companies     from '../pages/Companies';
-import CVBuilder     from '../pages/CVBuilder';
-import Feed          from '../pages/Feed';
-import Reels         from '../pages/Reels';
-import Login         from '../pages/Login';
-import Profile       from '../pages/Profile';
-import UserProfile   from '../pages/UserProfile';
-import SearchUsers   from '../pages/SearchUsers';
-import MapPage       from '../pages/MapPage';
-import Privacidad    from '../pages/Privacidad';
-import Notifications from '../pages/Notifications';
-import Messages      from '../pages/Messages';
-import Chat          from '../pages/Chat';
-import NotFound      from '../pages/NotFound';
+import Home                 from '../pages/Home';
+import Jobs                 from '../pages/Jobs';
+import Companies            from '../pages/Companies';
+import CVBuilder            from '../pages/CVBuilder';
+import Feed                 from '../pages/Feed';
+import Reels                from '../pages/Reels';
+import Login                from '../pages/Login';
+import Profile              from '../pages/Profile';
+import UserProfile          from '../pages/UserProfile';
+import SearchUsers          from '../pages/SearchUsers';
+import MapPage              from '../pages/MapPage';
+import Privacidad           from '../pages/Privacidad';
+import Notifications        from '../pages/Notifications';
+import NotificacionesSocial from '../pages/NotificacionesSocial';
+import Messages             from '../pages/Messages';
+import Chat                 from '../pages/Chat';
+import NotFound             from '../pages/NotFound';
 
 interface AppRoutesProps      { user: User | null; loading: boolean; }
 interface ProtectedRouteProps { user: User | null; loading: boolean; children: React.ReactElement; }
@@ -65,21 +66,21 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
       <Routes>
         <Route path="/login" element={loading ? <LoadingScreen /> : !user ? <Login /> : <Navigate to="/" replace />} />
 
-        <Route path="/"                      element={PR(<Home />)}          />
-        <Route path="/jobs"                  element={PR(<Jobs />)}          />
-        <Route path="/companies"             element={PR(<Companies />)}     />
-        <Route path="/cv"                    element={PR(<CVBuilder />)}     />
-        <Route path="/mapa"                  element={PR(<MapPage />)}       />
-        <Route path="/social"                element={PR(<Feed />)}          />
-        <Route path="/reels"                 element={PR(<Reels />)}         />
-        <Route path="/profile"               element={PR(<Profile />)}       />
-        <Route path="/user/:uid"             element={PR(<UserProfile />)}   />
-        <Route path="/search"                element={PR(<SearchUsers />)}   />
-        <Route path="/privacidad"            element={PR(<Privacidad />)}    />
-        <Route path="/notificaciones"        element={PR(<Notifications />)} />
-        <Route path="/notificaciones-social" element={PR(<Notifications />)} />
-        <Route path="/messages"              element={PR(<Messages />)}      />
-        <Route path="/chat/:chatId"          element={PR(<Chat />)}          />
+        <Route path="/"                      element={PR(<Home />)}                  />
+        <Route path="/jobs"                  element={PR(<Jobs />)}                  />
+        <Route path="/companies"             element={PR(<Companies />)}             />
+        <Route path="/cv"                    element={PR(<CVBuilder />)}             />
+        <Route path="/mapa"                  element={PR(<MapPage />)}               />
+        <Route path="/social"                element={PR(<Feed />)}                  />
+        <Route path="/reels"                 element={PR(<Reels />)}                 />
+        <Route path="/profile"               element={PR(<Profile />)}               />
+        <Route path="/user/:uid"             element={PR(<UserProfile />)}           />
+        <Route path="/search"                element={PR(<SearchUsers />)}           />
+        <Route path="/privacidad"            element={PR(<Privacidad />)}            />
+        <Route path="/notificaciones"        element={PR(<Notifications />)}         />
+        <Route path="/notificaciones-social" element={PR(<NotificacionesSocial />)} />
+        <Route path="/messages"              element={PR(<Messages />)}              />
+        <Route path="/chat/:chatId"          element={PR(<Chat />)}                  />
 
         <Route path="*" element={user ? <NotFound /> : <Navigate to="/login" replace />} />
       </Routes>
