@@ -64,7 +64,11 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export default function FloatingAI() {
+interface FloatingAIProps {
+  visorActivo?: boolean;
+}
+
+export default function FloatingAI({ visorActivo = false }: FloatingAIProps) {
   const [isOpen,    setIsOpen]    = useState<boolean>(false);
   const [mensaje,   setMensaje]   = useState<string>('');
   const [cargando,  setCargando]  = useState<boolean>(false);
@@ -243,6 +247,9 @@ export default function FloatingAI() {
     if (fileRef.current) fileRef.current.value = '';
   };
 
+  // Ocultar botón IA cuando el visor de historias está activo
+  if (visorActivo) return null;
+
   return (
     <>
       {!isOpen && (
@@ -272,7 +279,7 @@ export default function FloatingAI() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={handleLimpiar} aria-label="Nueva conversación" title="Nueva conversación"
+              <button onClick={handleLimpiar} aria-label="Nueva conversación"
                 className="p-1 opacity-70 hover:opacity-100 active:scale-90 transition-all text-xs font-bold">
                 ↺
               </button>
@@ -354,4 +361,4 @@ export default function FloatingAI() {
       )}
     </>
   );
-}
+    }
