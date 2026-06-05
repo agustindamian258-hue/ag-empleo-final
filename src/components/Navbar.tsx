@@ -6,7 +6,7 @@ import { db } from '../app/firebase';
 import { useTheme } from '../context/ThemeContext';
 import {
   Bars3Icon, PlusIcon, BellIcon, HomeIcon,
-  MagnifyingGlassIcon, ChatBubbleLeftEllipsisIcon,
+  ChatBubbleLeftEllipsisIcon,
   FilmIcon,
 } from '@heroicons/react/24/outline';
 
@@ -15,7 +15,7 @@ interface NavbarProps {
   onPublishClick?: () => void;
 }
 
-const RUTAS_SOCIAL = ['/social', '/reels', '/search'];
+const RUTAS_SOCIAL = ['/social', '/reels', '/search', '/notificaciones-social'];
 
 export default function Navbar({ onMenuClick, onPublishClick }: NavbarProps) {
   const { user } = useTheme();
@@ -186,4 +186,4 @@ function NavLink({ to, label, active, color, bg, children }: {
       </span>
     </Link>
   );
-        }
+          }
