@@ -1,3 +1,4 @@
+// src/components/Feed.tsx
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, auth } from '../app/firebase';
 import {
@@ -14,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import { subirArchivoCloudinary } from '../utils/cloudinary';
+import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 
 interface Post {
   id:        string;
@@ -133,6 +135,7 @@ function ModalComentarios({ postId, postUserId, onClose }: {
   const [texto,        setTexto]        = useState('');
   const [enviando,     setEnviando]     = useState(false);
   const [respondiendo, setRespondiendo] = useState<{ id: string; nombre: string } | null>(null);
+  const [showEmoji,    setShowEmoji]    = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -168,6 +171,7 @@ function ModalComentarios({ postId, postUserId, onClose }: {
   async function handleEnviar() {
     if (!user || !texto.trim()) return;
     setEnviando(true);
+    setShowEmoji(false);
     try {
       await addDoc(collection(db, 'posts', postId, 'comments'), {
         text: sanitizeText(texto), userId: user.uid,
@@ -177,11 +181,16 @@ function ModalComentarios({ postId, postUserId, onClose }: {
       await crearNotificacion({
         uid: postUserId,
         titulo: `💬 ${user.displayName ?? 'Alguien'} comentó tu publicación`,
-        mensaje: texto.trim().slice(0, 80), tipo: 'like',
+        mensaje: texto.trim().slice(0, 80), tipo: 'comentario',
       });
       setTexto(''); setRespondiendo(null);
     } catch (e) { console.error('[Feed] comentar:', e); }
     finally { setEnviando(false); }
+  }
+
+  function onEmojiClick(emojiData: EmojiClickData) {
+    setTexto((prev) => prev + emojiData.emoji);
+    inputRef.current?.focus();
   }
 
   return (
@@ -228,6 +237,20 @@ function ModalComentarios({ postId, postUserId, onClose }: {
             );
           })}
         </div>
+
+        {/* Emoji Picker comentarios */}
+        {showEmoji && user && (
+          <div className="w-full">
+            <EmojiPicker
+              onEmojiClick={onEmojiClick}
+              theme={Theme.AUTO}
+              width="100%"
+              height={280}
+              searchPlaceholder="Buscar emoji..."
+            />
+          </div>
+        )}
+
         {user && (
           <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
             {respondiendo && (
@@ -236,7 +259,13 @@ function ModalComentarios({ postId, postUserId, onClose }: {
                 <button onClick={() => { setRespondiendo(null); setTexto(''); }} className="text-purple-400 text-xs">✕</button>
               </div>
             )}
-            <div className="flex gap-3 items-center">
+            <div className="flex gap-2 items-center">
+              <button
+                onClick={() => setShowEmoji((p) => !p)}
+                className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center active:scale-90 transition-transform shrink-0"
+              >
+                <FaceSmileIcon className="w-4 h-4 text-gray-500" />
+              </button>
               <img src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=7c3aed&color=fff`}
                 alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
               <input ref={inputRef} value={texto} onChange={(e) => setTexto(e.target.value)}
@@ -279,6 +308,7 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
   const [guardandoEdit,  setGuardandoEdit]  = useState(false);
   const [soloSeguidos,   setSoloSeguidos]   = useState(false);
   const [siguiendoUids,  setSiguiendoUids]  = useState<string[]>([]);
+  const [showEmojiCompose, setShowEmojiCompose] = useState(false);
 
   const previewUrlRef = useRef<string | null>(null);
 
@@ -308,24 +338,10 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
     setPosts([]);
     setLastDoc(null);
     setHayMas(true);
-
     if (soloSeguidos && siguiendoUids.length === 0) return;
-
     const q = soloSeguidos
-      ? query(
-          collection(db, 'posts'),
-          where('zona', '==', zona),
-          where('userId', 'in', siguiendoUids.slice(0, 10)),
-          orderBy('createdAt', 'desc'),
-          limit(PAGE_SIZE),
-        )
-      : query(
-          collection(db, 'posts'),
-          where('zona', '==', zona),
-          orderBy('createdAt', 'desc'),
-          limit(PAGE_SIZE),
-        );
-
+      ? query(collection(db, 'posts'), where('zona', '==', zona), where('userId', 'in', siguiendoUids.slice(0, 10)), orderBy('createdAt', 'desc'), limit(PAGE_SIZE))
+      : query(collection(db, 'posts'), where('zona', '==', zona), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
     const unsub = onSnapshot(q,
       (snap) => {
         setPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post)));
@@ -342,21 +358,8 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
     setCargandoMas(true);
     try {
       const q = soloSeguidos
-        ? query(
-            collection(db, 'posts'),
-            where('zona', '==', zona),
-            where('userId', 'in', siguiendoUids.slice(0, 10)),
-            orderBy('createdAt', 'desc'),
-            startAfter(lastDoc),
-            limit(PAGE_SIZE),
-          )
-        : query(
-            collection(db, 'posts'),
-            where('zona', '==', zona),
-            orderBy('createdAt', 'desc'),
-            startAfter(lastDoc),
-            limit(PAGE_SIZE),
-          );
+        ? query(collection(db, 'posts'), where('zona', '==', zona), where('userId', 'in', siguiendoUids.slice(0, 10)), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE))
+        : query(collection(db, 'posts'), where('zona', '==', zona), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(PAGE_SIZE));
       const snap   = await getDocs(q);
       const nuevos = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
       setPosts((prev) => [...prev, ...nuevos]);
@@ -365,7 +368,7 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
     } catch (e) { console.error('[Feed] cargarMas:', e); }
     finally { setCargandoMas(false); }
   }, [lastDoc, cargandoMas, hayMas, soloSeguidos, siguiendoUids, zona]);
-  
+
   useEffect(() => {
     return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); };
   }, []);
@@ -386,7 +389,7 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
     if (!user) return;
     const textSanitizado = sanitizeText(text);
     if (!textSanitizado && !file) return;
-    setPublicando(true); setError('');
+    setPublicando(true); setError(''); setShowEmojiCompose(false);
     try {
       let mediaUrl  = '';
       let mediaType: 'image' | 'video' | '' = '';
@@ -395,9 +398,7 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
           const { url, tipo } = await subirArchivoCloudinary(file);
           mediaUrl  = url;
           mediaType = tipo;
-        } catch {
-          setError('No se pudo subir el archivo. Se publicará sin imagen.');
-        }
+        } catch { setError('No se pudo subir el archivo. Se publicará sin imagen.'); }
       }
       await addDoc(collection(db, 'posts'), {
         text: textSanitizado, mediaUrl, mediaType, zona,
@@ -419,15 +420,12 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
     catch (e) { console.error('[Feed] eliminar:', e); }
   };
 
-  const handleEditarInicio = (post: Post) => { setEditandoId(post.id); setEditTexto(post.text); };
-
+  const handleEditarInicio  = (post: Post) => { setEditandoId(post.id); setEditTexto(post.text); };
   const handleEditarGuardar = async (postId: string) => {
     if (!user || !editTexto.trim()) return;
     setGuardandoEdit(true);
     try {
-      await updateDoc(doc(db, 'posts', postId), {
-        text: sanitizeText(editTexto), editadoEn: serverTimestamp(),
-      });
+      await updateDoc(doc(db, 'posts', postId), { text: sanitizeText(editTexto), editadoEn: serverTimestamp() });
       setEditandoId(null); setEditTexto('');
     } catch (e) { console.error('[Feed] editar:', e); }
     finally { setGuardandoEdit(false); }
@@ -448,7 +446,7 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
         await crearNotificacion({
           uid: postUserId,
           titulo: `${emoji} ${user.displayName ?? 'Alguien'} reaccionó a tu publicación`,
-          mensaje: emoji, tipo: 'like',
+          mensaje: emoji, tipo: 'reaccion',
         });
       }
     } catch (e) { console.error('[Feed] reacción:', e); }
@@ -468,16 +466,10 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
     if (!user) return;
     setReportandoId(null);
     try {
-      const qYaReporto = query(
-        collection(db, 'reports'),
-        where('postId', '==', postId),
-        where('reportadoPor', '==', user.uid),
-      );
-      const yaReporto = await getDocs(qYaReporto);
+      const qYaReporto = query(collection(db, 'reports'), where('postId', '==', postId), where('reportadoPor', '==', user.uid));
+      const yaReporto  = await getDocs(qYaReporto);
       if (!yaReporto.empty) return;
-      await addDoc(collection(db, 'reports'), {
-        postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false,
-      });
+      await addDoc(collection(db, 'reports'), { postId, reportadoPor: user.uid, creadoEn: serverTimestamp(), revisado: false });
       const qReportes  = query(collection(db, 'reports'), where('postId', '==', postId));
       const snapConteo = await getCountFromServer(qReportes);
       if (snapConteo.data().count >= REPORTES_LIMITE) {
@@ -518,6 +510,15 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
                 {text.length}/{MAX_TEXT_LENGTH}
               </span>
             </div>
+            {showEmojiCompose && (
+              <EmojiPicker
+                onEmojiClick={(emojiData) => setText((prev) => prev.length < MAX_TEXT_LENGTH ? prev + emojiData.emoji : prev)}
+                theme={Theme.AUTO}
+                width="100%"
+                height={280}
+                searchPlaceholder="Buscar emoji..."
+              />
+            )}
             {preview && (
               <div className="relative">
                 <img src={preview} alt="Vista previa" className="rounded-2xl w-full object-cover max-h-48" />
@@ -533,11 +534,19 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
               </div>
             )}
             <div className="flex justify-between items-center pt-1 border-t border-gray-100 dark:border-gray-800">
-              <label className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
-                <PhotoIcon className="w-5 h-5 text-purple-400" />
-                <span>Foto/Video</span>
-                <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
-              </label>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
+                  <PhotoIcon className="w-5 h-5 text-purple-400" />
+                  <span>Foto/Video</span>
+                  <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
+                </label>
+                <button
+                  onClick={() => setShowEmojiCompose((p) => !p)}
+                  className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-sm active:scale-95 transition-transform"
+                >
+                  <FaceSmileIcon className="w-5 h-5 text-purple-400" />
+                </button>
+              </div>
               <button
                 onClick={handlePost}
                 disabled={publicando || (!text.trim() && !file)}
@@ -564,18 +573,14 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
 
       {mostrarFiltro && (
         <div className="flex gap-2 pb-1">
-          <button
-            onClick={() => setSoloSeguidos(false)}
-            className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
-              !soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-            }`}
-          >Todos</button>
-          <button
-            onClick={() => setSoloSeguidos(true)}
-            className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${
-              soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-            }`}
-          >Siguiendo</button>
+          <button onClick={() => setSoloSeguidos(false)}
+            className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${!soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'}`}>
+            Todos
+          </button>
+          <button onClick={() => setSoloSeguidos(true)}
+            className={`px-4 py-1.5 rounded-full text-sm font-black transition-all active:scale-95 ${soloSeguidos ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'}`}>
+            Siguiendo
+          </button>
         </div>
       )}
 
@@ -701,12 +706,8 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
       {postsFiltrados.length === 0 && !error && (
         <div className="text-center py-16 text-gray-300 dark:text-gray-600">
           <p className="text-4xl mb-3">{soloSeguidos ? '👥' : '📭'}</p>
-          <p className="font-bold text-lg">
-            {soloSeguidos ? 'Nadie que seguís publicó aún' : 'Sin publicaciones aún'}
-          </p>
-          <p className="text-sm">
-            {soloSeguidos ? 'Seguí más personas para ver su contenido' : '¡Sé el primero en compartir algo!'}
-          </p>
+          <p className="font-bold text-lg">{soloSeguidos ? 'Nadie que seguís publicó aún' : 'Sin publicaciones aún'}</p>
+          <p className="text-sm">{soloSeguidos ? 'Seguí más personas para ver su contenido' : '¡Sé el primero en compartir algo!'}</p>
         </div>
       )}
 
@@ -722,4 +723,4 @@ export default function Feed({ showCompose = true, soloCompose = false, zona = '
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-  }
+                             }
