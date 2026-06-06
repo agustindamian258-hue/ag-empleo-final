@@ -10,9 +10,9 @@ import FeedComponent from '../components/Feed';
 import Stories from '../components/Stories';
 
 export default function FeedPage() {
-  const [isMenuOpen,       setIsMenuOpen]       = useState(false);
-  const [isPublishOpen,    setIsPublishOpen]    = useState(false);
-  const [visorActivo,      setVisorActivo]      = useState(false);
+  const [isMenuOpen,    setIsMenuOpen]    = useState(false);
+  const [isPublishOpen, setIsPublishOpen] = useState(false);
+  const [visorActivo,   setVisorActivo]   = useState(false);
   const { user } = useTheme();
   const navigate = useNavigate();
   const nombre = user?.displayName?.split(' ')[0] || 'Bienvenido';
@@ -58,7 +58,7 @@ export default function FeedPage() {
         </div>
       )}
 
-      <FloatingAI />
+      <FloatingAI visorActivo={visorActivo} />
       {!visorActivo && (
         <Navbar onMenuClick={() => setIsMenuOpen(true)} onPublishClick={() => setIsPublishOpen(true)} />
       )}
