@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { XMarkIcon, PaperAirplaneIcon, PaperClipIcon } from '@heroicons/react/24/solid';
 import { auth, db } from '../app/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { useLocation } from 'react-router-dom';
 
 interface Mensaje {
   id:      string;
@@ -46,6 +47,16 @@ const MENSAJE_INICIAL: Mensaje = {
   content: '¡Hola! Soy el asistente de AG Empleo 💼 ¿En qué te puedo ayudar hoy?\n\nPodés escribirme o adjuntar tu CV en PDF con el botón 📎',
 };
 
+// Rutas donde el botón IA NO debe aparecer
+const RUTAS_SIN_IA = [
+  '/social',
+  '/reels',
+  '/search',
+  '/notificaciones-social',
+  '/messages',
+  '/chat',
+];
+
 function toGeminiMessages(historial: Mensaje[]): GeminiMessage[] {
   return historial
     .filter(m => m.id !== 'init')
@@ -69,6 +80,7 @@ interface FloatingAIProps {
 }
 
 export default function FloatingAI({ visorActivo = false }: FloatingAIProps) {
+  const location = useLocation();
   const [isOpen,    setIsOpen]    = useState<boolean>(false);
   const [mensaje,   setMensaje]   = useState<string>('');
   const [cargando,  setCargando]  = useState<boolean>(false);
@@ -80,6 +92,14 @@ export default function FloatingAI({ visorActivo = false }: FloatingAIProps) {
   const inputRef   = useRef<HTMLInputElement>(null);
   const abortRef   = useRef<AbortController | null>(null);
   const fileRef    = useRef<HTMLInputElement>(null);
+
+  // Ocultar en rutas sociales o cuando visor está activo
+  const debeOcultarse = visorActivo ||
+    RUTAS_SIN_IA.some(r => location.pathname.startsWith(r));
+
+  useEffect(() => {
+    if (debeOcultarse) setIsOpen(false);
+  }, [debeOcultarse]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -247,8 +267,7 @@ export default function FloatingAI({ visorActivo = false }: FloatingAIProps) {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  // Ocultar botón IA cuando el visor de historias está activo
-  if (visorActivo) return null;
+  if (debeOcultarse) return null;
 
   return (
     <>
@@ -264,7 +283,6 @@ export default function FloatingAI({ visorActivo = false }: FloatingAIProps) {
 
       {isOpen && (
         <div className="fixed bottom-24 right-4 w-[90vw] max-w-[360px] h-[520px] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl z-50 flex flex-col border border-gray-100 dark:border-gray-800 overflow-hidden">
-
           <div className="bg-[--sc-500] p-4 flex justify-between items-center text-white shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
@@ -361,4 +379,4 @@ export default function FloatingAI({ visorActivo = false }: FloatingAIProps) {
       )}
     </>
   );
-  }
+                                        }
