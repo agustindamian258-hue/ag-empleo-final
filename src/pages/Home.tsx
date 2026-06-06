@@ -1,3 +1,4 @@
+// src/pages/Home.tsx
 import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
@@ -38,7 +39,6 @@ export default function Home() {
       </header>
 
       <main className="px-4 pt-4">
-        {/* ✅ Corregido: zona="empleo" */}
         <Feed showCompose={false} zona="empleo" />
       </main>
 
@@ -53,7 +53,6 @@ export default function Home() {
           >
             <div className="w-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-4" />
             <p className="text-base font-black text-blue-700 dark:text-blue-400 mb-4">Nueva publicación</p>
-            {/* ✅ Corregido: zona="empleo" */}
             <Feed
               showCompose={true}
               soloCompose={true}
@@ -64,7 +63,7 @@ export default function Home() {
         </div>
       )}
 
-      <FloatingAI />
+      <FloatingAI visorActivo={false} />
       <Navbar
         onMenuClick={() => setIsMenuOpen(true)}
         onPublishClick={() => setIsPublishOpen(true)}
