@@ -361,4 +361,4 @@ export default function FloatingAI({ visorActivo = false }: FloatingAIProps) {
       )}
     </>
   );
-    }
+  }
