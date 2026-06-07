@@ -1,7 +1,7 @@
 // src/pages/Onboarding.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { auth, db } from '../app/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
@@ -9,27 +9,16 @@ type AccountType = 'persona' | 'empresa';
 
 const NIVELES = ['Sin experiencia', 'Junior (0-2 años)', 'Semi-Senior (2-5 años)', 'Senior (5+ años)'];
 
-const PASOS_PERSONA = [
-  { id: 1, titulo: '👋 ¿Quién sos?',               subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
-  { id: 2, titulo: '👤 Contanos sobre vos',         subtitulo: 'Completá tu perfil básico.' },
-  { id: 3, titulo: '💼 Tu perfil laboral',           subtitulo: 'Para que las empresas te encuentren.' },
-  { id: 4, titulo: '🎉 ¡Todo listo!',                subtitulo: 'Ya podés empezar a usar AG Empleo.' },
-];
-
-const PASOS_EMPRESA = [
-  { id: 1, titulo: '👋 ¿Quién sos?',               subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
-  { id: 2, titulo: '🏢 Tu empresa',                  subtitulo: 'Completá los datos de tu empresa.' },
-  { id: 3, titulo: '🎉 ¡Todo listo!',                subtitulo: 'Ya podés publicar empleos en AG Empleo.' },
-];
-
 export default function Onboarding() {
   const user     = auth.currentUser;
   const navigate = useNavigate();
 
-  const [paso,        setPaso]        = useState(1);
-  const [guardando,   setGuardando]   = useState(false);
-  const [error,       setError]       = useState('');
-  const [accountType, setAccountType] = useState<AccountType | null>(null);
+  const [paso,           setPaso]           = useState(1);
+  const [guardando,      setGuardando]      = useState(false);
+  const [error,          setError]          = useState('');
+  const [accountType,    setAccountType]    = useState<AccountType | null>(null);
+  const [usuarioExiste,  setUsuarioExiste]  = useState(false);
+  const [verificando,    setVerificando]    = useState(true);
 
   const [formPersona, setFormPersona] = useState({
     name:             user?.displayName || '',
@@ -42,18 +31,79 @@ export default function Onboarding() {
   });
 
   const [formEmpresa, setFormEmpresa] = useState({
-    name:        user?.displayName || '',
+    name:          user?.displayName || '',
     nombreEmpresa: '',
-    ciudad:       '',
-    rubro:        '',
-    descripcion:  '',
-    sitioWeb:     '',
-    contacto:     '',
+    ciudad:        '',
+    rubro:         '',
+    descripcion:   '',
+    sitioWeb:      '',
+    contacto:      '',
   });
+
+  // Verificar si el usuario ya existe y solo le falta accountType
+  useEffect(() => {
+    async function verificar() {
+      if (!user) { setVerificando(false); return; }
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setUsuarioExiste(true);
+          // Pre-llenar con datos existentes
+          setFormPersona((p) => ({
+            ...p,
+            name:             data.name             || user.displayName || '',
+            ciudad:           data.ciudad           || '',
+            bio:              data.bio              || '',
+            cargoDeseado:     data.cargoDeseado     || '',
+            nivelExperiencia: data.nivelExperiencia || 'Junior (0-2 años)',
+            disponible:       data.disponible       ?? true,
+            salarioEsperado:  data.salarioEsperado  || '',
+          }));
+          setFormEmpresa((p) => ({
+            ...p,
+            name:          data.name          || user.displayName || '',
+            nombreEmpresa: data.nombreEmpresa || '',
+            ciudad:        data.ciudad        || '',
+            rubro:         data.rubro         || '',
+            descripcion:   data.descripcion   || '',
+            sitioWeb:      data.sitioWeb      || '',
+            contacto:      data.contacto      || '',
+          }));
+        }
+      } catch (e) { console.error('[Onboarding] verificar:', e); }
+      finally { setVerificando(false); }
+    }
+    verificar();
+  }, [user]);
 
   const inputCls = 'w-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-500] placeholder-gray-400';
 
-  const PASOS = accountType === 'empresa' ? PASOS_EMPRESA : PASOS_PERSONA;
+  // Pasos según tipo — si el usuario ya existe, saltamos los pasos de perfil
+  const PASOS_PERSONA = usuarioExiste
+    ? [
+        { id: 1, titulo: '👋 ¿Quién sos?',  subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
+        { id: 2, titulo: '🎉 ¡Todo listo!', subtitulo: 'Ya podés empezar a usar AG Empleo.' },
+      ]
+    : [
+        { id: 1, titulo: '👋 ¿Quién sos?',        subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
+        { id: 2, titulo: '👤 Contanos sobre vos',  subtitulo: 'Completá tu perfil básico.' },
+        { id: 3, titulo: '💼 Tu perfil laboral',   subtitulo: 'Para que las empresas te encuentren.' },
+        { id: 4, titulo: '🎉 ¡Todo listo!',        subtitulo: 'Ya podés empezar a usar AG Empleo.' },
+      ];
+
+  const PASOS_EMPRESA = usuarioExiste
+    ? [
+        { id: 1, titulo: '👋 ¿Quién sos?',  subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
+        { id: 2, titulo: '🎉 ¡Todo listo!', subtitulo: 'Ya podés publicar empleos en AG Empleo.' },
+      ]
+    : [
+        { id: 1, titulo: '👋 ¿Quién sos?',  subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
+        { id: 2, titulo: '🏢 Tu empresa',   subtitulo: 'Completá los datos de tu empresa.' },
+        { id: 3, titulo: '🎉 ¡Todo listo!', subtitulo: 'Ya podés publicar empleos en AG Empleo.' },
+      ];
+
+  const PASOS     = accountType === 'empresa' ? PASOS_EMPRESA : PASOS_PERSONA;
   const totalPasos = accountType ? PASOS.length : 1;
   const progreso   = accountType ? ((paso - 1) / (totalPasos - 1)) * 100 : 0;
 
@@ -73,14 +123,11 @@ export default function Onboarding() {
 
   function siguiente() {
     setError('');
-    if (accountType === 'persona') {
-      if (paso === 2 && !formPersona.name.trim()) {
-        setError('El nombre es obligatorio.'); return;
-      }
-    } else if (accountType === 'empresa') {
-      if (paso === 2 && !formEmpresa.nombreEmpresa.trim()) {
-        setError('El nombre de la empresa es obligatorio.'); return;
-      }
+    if (accountType === 'persona' && !usuarioExiste) {
+      if (paso === 2 && !formPersona.name.trim()) { setError('El nombre es obligatorio.'); return; }
+    }
+    if (accountType === 'empresa' && !usuarioExiste) {
+      if (paso === 2 && !formEmpresa.nombreEmpresa.trim()) { setError('El nombre de la empresa es obligatorio.'); return; }
     }
     setPaso((p) => p + 1);
   }
@@ -89,7 +136,16 @@ export default function Onboarding() {
     if (!user) return;
     setGuardando(true); setError('');
     try {
-      if (accountType === 'persona') {
+      if (usuarioExiste) {
+        // Solo actualizar accountType y onboardingDone
+        await updateDoc(doc(db, 'users', user.uid), {
+          accountType,
+          onboardingDone: true,
+          ...(accountType === 'empresa' && formEmpresa.nombreEmpresa
+            ? { nombreEmpresa: formEmpresa.nombreEmpresa }
+            : {}),
+        });
+      } else if (accountType === 'persona') {
         await setDoc(doc(db, 'users', user.uid), {
           name:             formPersona.name.trim(),
           ciudad:           formPersona.ciudad.trim(),
@@ -105,17 +161,17 @@ export default function Onboarding() {
         });
       } else {
         await setDoc(doc(db, 'users', user.uid), {
-          name:          formEmpresa.name.trim() || user.displayName || '',
-          nombreEmpresa: formEmpresa.nombreEmpresa.trim(),
-          ciudad:        formEmpresa.ciudad.trim(),
-          rubro:         formEmpresa.rubro.trim(),
-          descripcion:   formEmpresa.descripcion.trim(),
-          sitioWeb:      formEmpresa.sitioWeb.trim(),
-          contacto:      formEmpresa.contacto.trim(),
-          photo:         user.photoURL || '',
-          accountType:   'empresa',
+          name:           formEmpresa.name.trim() || user.displayName || '',
+          nombreEmpresa:  formEmpresa.nombreEmpresa.trim(),
+          ciudad:         formEmpresa.ciudad.trim(),
+          rubro:          formEmpresa.rubro.trim(),
+          descripcion:    formEmpresa.descripcion.trim(),
+          sitioWeb:       formEmpresa.sitioWeb.trim(),
+          contacto:       formEmpresa.contacto.trim(),
+          photo:          user.photoURL || '',
+          accountType:    'empresa',
           onboardingDone: true,
-          createdAt:     serverTimestamp(),
+          createdAt:      serverTimestamp(),
         });
       }
       navigate('/', { replace: true });
@@ -125,17 +181,25 @@ export default function Onboarding() {
     } finally { setGuardando(false); }
   }
 
+  if (verificando) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <div className="w-8 h-8 border-4 border-[--sc-500] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const esPasoFinal = accountType && paso === totalPasos;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col">
 
-      {/* Barra de progreso */}
       <div className="h-1.5 bg-gray-200 dark:bg-gray-800">
         <div className="h-full bg-[--sc-500] transition-all duration-500" style={{ width: `${progreso}%` }} />
       </div>
 
       <div className="flex-1 flex flex-col max-w-lg mx-auto w-full px-5 py-8">
 
-        {/* Header */}
         <div className="mb-8">
           {accountType && (
             <p className="text-xs text-gray-400 dark:text-gray-500 font-bold mb-1">
@@ -150,13 +214,11 @@ export default function Onboarding() {
           </p>
         </div>
 
-        {/* Paso 1 — Selección de tipo */}
+        {/* Paso 1 — Selección tipo */}
         {paso === 1 && (
           <div className="flex-1 flex flex-col gap-4">
-            <button
-              onClick={() => seleccionarTipo('persona')}
-              className="w-full bg-white dark:bg-gray-900 rounded-3xl border-2 border-gray-100 dark:border-gray-800 p-6 text-left active:scale-95 transition-all hover:border-blue-400 shadow-sm"
-            >
+            <button onClick={() => seleccionarTipo('persona')}
+              className="w-full bg-white dark:bg-gray-900 rounded-3xl border-2 border-gray-100 dark:border-gray-800 p-6 text-left active:scale-95 transition-all hover:border-blue-400 shadow-sm">
               <div className="flex items-center gap-4 mb-3">
                 <span className="text-4xl">🙋</span>
                 <div>
@@ -165,17 +227,15 @@ export default function Onboarding() {
                 </div>
               </div>
               <div className="space-y-2 pl-2">
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">✅ Postulate a ofertas de empleo</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">✅ Publicá changas y trabajos freelance</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">✅ Generá tu CV profesional gratis</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">✅ Conectate con otros profesionales</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">✅ Postulate a ofertas de empleo</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">✅ Publicá changas y trabajos freelance</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">✅ Generá tu CV profesional gratis</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">✅ Conectate con otros profesionales</p>
               </div>
             </button>
 
-            <button
-              onClick={() => seleccionarTipo('empresa')}
-              className="w-full bg-white dark:bg-gray-900 rounded-3xl border-2 border-gray-100 dark:border-gray-800 p-6 text-left active:scale-95 transition-all hover:border-purple-400 shadow-sm"
-            >
+            <button onClick={() => seleccionarTipo('empresa')}
+              className="w-full bg-white dark:bg-gray-900 rounded-3xl border-2 border-gray-100 dark:border-gray-800 p-6 text-left active:scale-95 transition-all hover:border-purple-400 shadow-sm">
               <div className="flex items-center gap-4 mb-3">
                 <span className="text-4xl">🏢</span>
                 <div>
@@ -184,17 +244,17 @@ export default function Onboarding() {
                 </div>
               </div>
               <div className="space-y-2 pl-2">
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">✅ Publicá ofertas de empleo gratis</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">✅ Recibí postulaciones de candidatos</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">✅ Test de compatibilidad automático</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">✅ Panel de candidatos clasificados</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">✅ Publicá ofertas de empleo gratis</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">✅ Recibí postulaciones de candidatos</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">✅ Test de compatibilidad automático</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">✅ Panel de candidatos clasificados</p>
               </div>
             </button>
           </div>
         )}
 
-        {/* Paso 2 PERSONA — Perfil básico */}
-        {paso === 2 && accountType === 'persona' && (
+        {/* Paso 2 PERSONA — Perfil básico (solo usuarios nuevos) */}
+        {paso === 2 && accountType === 'persona' && !usuarioExiste && (
           <div className="flex-1 space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Nombre completo *</label>
@@ -211,8 +271,8 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Paso 3 PERSONA — Perfil laboral */}
-        {paso === 3 && accountType === 'persona' && (
+        {/* Paso 3 PERSONA — Perfil laboral (solo usuarios nuevos) */}
+        {paso === 3 && accountType === 'persona' && !usuarioExiste && (
           <div className="flex-1 space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cargo deseado</label>
@@ -252,8 +312,8 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Paso 2 EMPRESA — Datos de empresa */}
-        {paso === 2 && accountType === 'empresa' && (
+        {/* Paso 2 EMPRESA — Datos empresa (solo usuarios nuevos) */}
+        {paso === 2 && accountType === 'empresa' && !usuarioExiste && (
           <div className="flex-1 space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Nombre de la empresa *</label>
@@ -282,18 +342,18 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Paso final — Listo */}
-        {((paso === 4 && accountType === 'persona') || (paso === 3 && accountType === 'empresa')) && (
+        {/* Paso final */}
+        {esPasoFinal && (
           <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center">
             <div className="w-24 h-24 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
               <CheckCircleIcon className="w-14 h-14 text-green-500" />
             </div>
             <div>
-              <p className="text-xl font-black text-gray-900 dark:text-white">¡Tu perfil está listo!</p>
+              <p className="text-xl font-black text-gray-900 dark:text-white">¡Todo listo!</p>
               <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
                 {accountType === 'empresa'
-                  ? `Hola ${formEmpresa.nombreEmpresa || 'empresa'}, ya podés publicar empleos y encontrar candidatos.`
-                  : `Hola ${formPersona.name || 'bienvenido'}, ya podés explorar todas las funciones de AG Empleo.`
+                  ? `Ya podés publicar empleos y encontrar candidatos.`
+                  : `Ya podés explorar todas las funciones de AG Empleo.`
                 }
               </p>
             </div>
@@ -315,28 +375,21 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Botones — solo aparecen si ya eligió tipo */}
         {accountType && (
           <div className="mt-6 flex gap-3">
             <button
               onClick={() => { setPaso((p) => p - 1); if (paso === 2) setAccountType(null); }}
-              className="flex-1 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-black text-sm active:scale-95 transition-all"
-            >
+              className="flex-1 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-black text-sm active:scale-95 transition-all">
               Atrás
             </button>
-            {paso < totalPasos ? (
-              <button
-                onClick={siguiente}
-                className="flex-1 py-4 rounded-2xl bg-[--sc-500] text-white font-black text-sm active:scale-95 transition-all"
-              >
+            {!esPasoFinal ? (
+              <button onClick={siguiente}
+                className="flex-1 py-4 rounded-2xl bg-[--sc-500] text-white font-black text-sm active:scale-95 transition-all">
                 Siguiente
               </button>
             ) : (
-              <button
-                onClick={finalizar}
-                disabled={guardando}
-                className="flex-1 py-4 rounded-2xl bg-green-500 text-white font-black text-sm active:scale-95 transition-all disabled:opacity-50"
-              >
+              <button onClick={finalizar} disabled={guardando}
+                className="flex-1 py-4 rounded-2xl bg-green-500 text-white font-black text-sm active:scale-95 transition-all disabled:opacity-50">
                 {guardando ? 'Guardando...' : '¡Empezar!'}
               </button>
             )}
