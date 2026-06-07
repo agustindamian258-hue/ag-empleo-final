@@ -20,6 +20,7 @@ import NotificacionesSocial from '../pages/NotificacionesSocial';
 import Messages             from '../pages/Messages';
 import Chat                 from '../pages/Chat';
 import NotFound             from '../pages/NotFound';
+import MisPostulaciones     from '../pages/MisPostulaciones';
 
 interface AppRoutesProps      { user: User | null; loading: boolean; }
 interface ProtectedRouteProps { user: User | null; loading: boolean; children: React.ReactElement; }
@@ -81,6 +82,7 @@ export default function AppRoutes({ user, loading }: AppRoutesProps) {
         <Route path="/notificaciones-social" element={PR(<NotificacionesSocial />)} />
         <Route path="/messages"              element={PR(<Messages />)}              />
         <Route path="/chat/:chatId"          element={PR(<Chat />)}                  />
+        <Route path="/mis-postulaciones"     element={PR(<MisPostulaciones />)}      />
 
         <Route path="*" element={user ? <NotFound /> : <Navigate to="/login" replace />} />
       </Routes>
