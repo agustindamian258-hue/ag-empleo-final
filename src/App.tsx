@@ -1,7 +1,8 @@
 // src/App.tsx
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from './app/firebase';
+import { auth, db } from './app/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import AppRoutes from './app/rutas';
 import InstallBanner from './components/InstallBanner';
@@ -28,7 +29,8 @@ function LoadingScreen() {
 
 function AppContent() {
   const { isSocialMode, setUser, socialColor, darkMode } = useTheme();
-  const [user, setLocalUser] = useState<User | null | undefined>(undefined);
+  const [user,    setLocalUser] = useState<User | null | undefined>(undefined);
+  const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
     const vars = COLOR_VARS[socialColor] ?? COLOR_VARS.blue;
@@ -41,14 +43,32 @@ function AppContent() {
   }, [darkMode]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setLocalUser(u);
       setUser(u);
+
+      if (u) {
+        // Verificar si el usuario existente necesita elegir tipo de cuenta
+        try {
+          const snap = await getDoc(doc(db, 'users', u.uid));
+          if (snap.exists()) {
+            const data = snap.data();
+            // Si no tiene accountType ni onboardingDone, mandar a onboarding
+            if (!data.accountType || !data.onboardingDone) {
+              window.location.href = '/onboarding';
+            }
+          }
+        } catch (e) {
+          console.error('[App] Error verificando usuario:', e);
+        }
+      }
+
+      setLoading(false);
     });
     return () => unsub();
   }, [setUser]);
 
-  if (user === undefined) return <LoadingScreen />;
+  if (user === undefined || loading) return <LoadingScreen />;
 
   return (
     <div className={isSocialMode ? 'theme-social' : 'theme-empleo'}>
