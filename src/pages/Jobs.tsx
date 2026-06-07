@@ -5,8 +5,10 @@ import {
   collection, query, orderBy, onSnapshot,
   addDoc, serverTimestamp, doc, updateDoc, deleteDoc,
   limit, startAfter, getDocs, QueryDocumentSnapshot, DocumentData,
+  where, getDoc,
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Menu   from '../components/Menu';
 import { subirArchivoCloudinary } from '../utils/cloudinary';
@@ -14,10 +16,16 @@ import {
   BriefcaseIcon, MapPinIcon, CurrencyDollarIcon,
   MagnifyingGlassIcon, ExclamationCircleIcon,
   PlusIcon, XMarkIcon, PhotoIcon, EnvelopeIcon,
-  PencilIcon, TrashIcon, CheckIcon,
+  PencilIcon, TrashIcon, CheckIcon, UserGroupIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 
 type TipoEmpleo = 'full-time' | 'part-time' | 'changa' | 'remoto';
+
+interface Requisito {
+  id:       string;
+  pregunta: string;
+}
 
 interface Empleo {
   id:          string;
@@ -31,6 +39,7 @@ interface Empleo {
   mediaUrl?:   string;
   mediaType?:  'image' | 'video' | '';
   uid?:        string;
+  requisitos?: Requisito[];
   createdAt:   { toDate: () => Date } | null;
 }
 
@@ -66,6 +75,7 @@ function formatFecha(createdAt: Empleo['createdAt']): string {
   return createdAt.toDate().toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
 
+// ── Modal Publicar ────────────────────────────────────────────────────────────
 function ModalPublicar({
   onClose,
   empleoEditar,
@@ -74,7 +84,7 @@ function ModalPublicar({
   empleoEditar?: Empleo | null;
 }) {
   const editando = !!empleoEditar;
-  const [form,      setForm]      = useState<FormData>(
+  const [form,       setForm]       = useState<FormData>(
     empleoEditar ? {
       titulo:      empleoEditar.titulo,
       empresa:     empleoEditar.empresa,
@@ -85,16 +95,28 @@ function ModalPublicar({
       contacto:    empleoEditar.contacto ?? '',
     } : FORM_INICIAL
   );
-  const [file,      setFile]      = useState<File | null>(null);
-  const [preview,   setPreview]   = useState<string | null>(empleoEditar?.mediaUrl ?? null);
-  const [guardando, setGuardando] = useState(false);
-  const [errForm,   setErrForm]   = useState('');
+  const [requisitos, setRequisitos] = useState<Requisito[]>(empleoEditar?.requisitos ?? []);
+  const [nuevoReq,   setNuevoReq]   = useState('');
+  const [file,       setFile]       = useState<File | null>(null);
+  const [preview,    setPreview]    = useState<string | null>(empleoEditar?.mediaUrl ?? null);
+  const [guardando,  setGuardando]  = useState(false);
+  const [errForm,    setErrForm]    = useState('');
   const previewRef = useRef<string | null>(null);
 
   const inputBase = 'w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sc-500)] placeholder-gray-400 dark:placeholder-gray-500';
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  }
+
+  function agregarRequisito() {
+    if (!nuevoReq.trim() || requisitos.length >= 8) return;
+    setRequisitos((p) => [...p, { id: Date.now().toString(), pregunta: nuevoReq.trim() }]);
+    setNuevoReq('');
+  }
+
+  function eliminarRequisito(id: string) {
+    setRequisitos((p) => p.filter((r) => r.id !== id));
   }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -115,19 +137,14 @@ function ModalPublicar({
     }
     setGuardando(true); setErrForm('');
     try {
-      let mediaUrl:  string             = empleoEditar?.mediaUrl  ?? '';
+      let mediaUrl:  string = empleoEditar?.mediaUrl  ?? '';
       let mediaType: 'image' | 'video' | '' = empleoEditar?.mediaType ?? '';
-
       if (file) {
         try {
           const { url, tipo } = await subirArchivoCloudinary(file);
-          mediaUrl  = url;
-          mediaType = tipo;
-        } catch {
-          setErrForm('No se pudo subir el archivo. Se publicará sin imagen.');
-        }
+          mediaUrl = url; mediaType = tipo;
+        } catch { setErrForm('No se pudo subir el archivo.'); }
       }
-
       const payload = {
         titulo:      form.titulo.trim(),
         empresa:     form.empresa.trim(),
@@ -136,9 +153,9 @@ function ModalPublicar({
         tipo:        form.tipo,
         descripcion: form.descripcion.trim(),
         contacto:    form.contacto.trim() || null,
+        requisitos,
         mediaUrl, mediaType,
       };
-
       if (editando && empleoEditar) {
         await updateDoc(doc(db, 'empleos', empleoEditar.id), { ...payload, editadoEn: serverTimestamp() });
       } else {
@@ -157,12 +174,13 @@ function ModalPublicar({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
-        style={{ maxHeight: '75vh', paddingBottom: 'calc(env(safe-area-inset-bottom) + 100px)' }}>
+        style={{ maxHeight: '85vh', paddingBottom: 'calc(env(safe-area-inset-bottom) + 100px)' }}>
+
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">
             {editando ? 'Editar empleo' : 'Publicar empleo'}
           </h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
             <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
@@ -183,7 +201,7 @@ function ModalPublicar({
           {TIPOS_FORM.map((t) => (
             <button key={t} type="button" onClick={() => setForm((p) => ({ ...p, tipo: t }))}
               className={`px-3 py-1.5 rounded-full text-xs font-black transition-all active:scale-95 ${
-                form.tipo === t ? 'bg-[var(--sc-600)] text-white shadow' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                form.tipo === t ? 'bg-[var(--sc-600)] text-white shadow' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
               }`}>
               {t.toUpperCase()}
             </button>
@@ -194,19 +212,47 @@ function ModalPublicar({
           placeholder="Descripción del puesto *" rows={3}
           className={`${inputBase} resize-none`} maxLength={500} />
 
+        {/* Requisitos */}
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            Requisitos para postularse ({requisitos.length}/8)
+          </p>
+          <p className="text-xs text-gray-400">Los candidatos responderán Sí o No a cada pregunta.</p>
+          {requisitos.map((r) => (
+            <div key={r.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-2xl px-3 py-2">
+              <span className="text-xs text-gray-700 dark:text-gray-300 flex-1">{r.pregunta}</span>
+              <button onClick={() => eliminarRequisito(r.id)} className="text-red-400 text-xs active:scale-90">✕</button>
+            </div>
+          ))}
+          {requisitos.length < 8 && (
+            <div className="flex gap-2">
+              <input
+                value={nuevoReq}
+                onChange={(e) => setNuevoReq(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && agregarRequisito()}
+                placeholder="Ej: ¿Tenés experiencia en ventas?"
+                className={`${inputBase} flex-1`}
+                maxLength={100}
+              />
+              <button onClick={agregarRequisito}
+                className="px-3 py-2 rounded-2xl bg-[var(--sc-500)] text-white text-xs font-black active:scale-95">
+                +
+              </button>
+            </div>
+          )}
+        </div>
+
         {preview ? (
           <div className="relative rounded-2xl overflow-hidden bg-black">
             {(file?.type.startsWith('video') || empleoEditar?.mediaType === 'video')
               ? <video src={preview} controls className="w-full max-h-48 object-cover" />
               : <img src={preview} alt="Vista previa" className="w-full max-h-48 object-cover" />
             }
-            <button onClick={() => {
-              setFile(null); setPreview(null);
-              if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; }
-            }} className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold">✕</button>
+            <button onClick={() => { setFile(null); setPreview(null); if (previewRef.current) { URL.revokeObjectURL(previewRef.current); previewRef.current = null; } }}
+              className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold">✕</button>
           </div>
         ) : (
-          <label className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm cursor-pointer active:scale-95 transition-transform">
+          <label className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 text-sm cursor-pointer active:scale-95">
             <PhotoIcon className="w-5 h-5 text-[var(--sc-500)]" />
             <span>Agregar foto o video (opcional)</span>
             <input type="file" accept="image/*,video/*" onChange={handleFile} className="hidden" />
@@ -220,7 +266,7 @@ function ModalPublicar({
         )}
 
         <button type="button" onClick={handleSubmit} disabled={guardando}
-          className="w-full py-4 rounded-2xl bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+          className="w-full py-4 rounded-2xl bg-[var(--sc-600)] text-white font-black text-sm active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2">
           {guardando
             ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{editando ? 'Guardando...' : 'Publicando...'}</>
             : <><CheckIcon className="w-4 h-4" />{editando ? 'Guardar cambios' : 'Publicar empleo'}</>
@@ -231,32 +277,183 @@ function ModalPublicar({
   );
 }
 
+// ── Modal Postularse ──────────────────────────────────────────────────────────
+function ModalPostularse({ empleo, onClose }: { empleo: Empleo; onClose: () => void }) {
+  const user = auth.currentUser;
+  const [respuestas,  setRespuestas]  = useState<Record<string, boolean>>({});
+  const [enviando,    setEnviando]    = useState(false);
+  const [enviado,     setEnviado]     = useState(false);
+  const [error,       setError]       = useState('');
+
+  const requisitos = empleo.requisitos ?? [];
+  const todoRespondido = requisitos.every((r) => respuestas[r.id] !== undefined);
+
+  function calcularGrupo(): 'apto' | 'parcial' | 'no_apto' {
+    if (requisitos.length === 0) return 'apto';
+    const sies = requisitos.filter((r) => respuestas[r.id] === true).length;
+    if (sies === requisitos.length) return 'apto';
+    if (sies === 0) return 'no_apto';
+    return 'parcial';
+  }
+
+  async function handlePostular() {
+    if (!user) return;
+    if (requisitos.length > 0 && !todoRespondido) {
+      setError('Respondé todas las preguntas antes de postularte.'); return;
+    }
+    setEnviando(true); setError('');
+    try {
+      const userSnap = await getDoc(doc(db, 'users', user.uid));
+      const userData = userSnap.exists() ? userSnap.data() : {};
+      const grupo    = calcularGrupo();
+
+      await addDoc(collection(db, 'empleos', empleo.id, 'postulaciones'), {
+        uid:        user.uid,
+        nombre:     userData.name     || user.displayName || 'Usuario',
+        foto:       userData.photo    || user.photoURL    || '',
+        ciudad:     userData.ciudad   || '',
+        cargo:      userData.cargoDeseado || '',
+        nivel:      userData.nivelExperiencia || '',
+        respuestas,
+        grupo,
+        createdAt:  serverTimestamp(),
+      });
+
+      // Notificación al empleador
+      if (empleo.uid) {
+        await addDoc(collection(db, 'notifications'), {
+          uid:      empleo.uid,
+          titulo:   `💼 Nueva postulación en "${empleo.titulo}"`,
+          mensaje:  `${userData.name || user.displayName || 'Alguien'} se postuló a tu oferta.`,
+          tipo:     'empleo',
+          leida:    false,
+          creadoEn: serverTimestamp(),
+        });
+      }
+      setEnviado(true);
+    } catch (e) {
+      console.error('[Jobs] postular:', e);
+      setError('No se pudo enviar la postulación. Intentá de nuevo.');
+    } finally { setEnviando(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 pb-10 animate-slide-up overflow-y-auto"
+        style={{ maxHeight: '80vh' }}>
+
+        {enviado ? (
+          <div className="flex flex-col items-center gap-4 py-8 text-center">
+            <span className="text-5xl">🎉</span>
+            <p className="font-black text-gray-900 dark:text-white text-xl">¡Postulación enviada!</p>
+            <p className="text-gray-400 text-sm">La empresa va a revisar tu perfil y se va a contactar con vos.</p>
+            <button onClick={onClose}
+              className="mt-2 px-6 py-3 rounded-2xl bg-[var(--sc-500)] text-white font-black text-sm active:scale-95">
+              Cerrar
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">Postularse</h2>
+                <p className="text-xs text-gray-400">{empleo.titulo} — {empleo.empresa}</p>
+              </div>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+                <XMarkIcon className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {requisitos.length === 0 ? (
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-4 mb-4">
+                <p className="text-sm text-blue-700 dark:text-blue-300 font-bold">Esta oferta no tiene requisitos específicos.</p>
+                <p className="text-xs text-blue-500 mt-1">Tu perfil se enviará directamente a la empresa.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-4">
+                <p className="text-sm font-black text-gray-700 dark:text-gray-300">Respondé las preguntas de la empresa:</p>
+                {requisitos.map((r) => (
+                  <div key={r.id} className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 space-y-2">
+                    <p className="text-sm text-gray-800 dark:text-gray-200 font-bold">{r.pregunta}</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setRespuestas((p) => ({ ...p, [r.id]: true }))}
+                        className={`flex-1 py-2 rounded-xl text-sm font-black transition-all active:scale-95 ${
+                          respuestas[r.id] === true
+                            ? 'bg-green-500 text-white'
+                            : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+                        }`}>
+                        ✅ Sí
+                      </button>
+                      <button
+                        onClick={() => setRespuestas((p) => ({ ...p, [r.id]: false }))}
+                        className={`flex-1 py-2 rounded-xl text-sm font-black transition-all active:scale-95 ${
+                          respuestas[r.id] === false
+                            ? 'bg-red-500 text-white'
+                            : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+                        }`}>
+                        ❌ No
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {error && (
+              <p className="text-red-500 text-xs flex items-center gap-1 mb-3">
+                <ExclamationCircleIcon className="w-4 h-4 shrink-0" />{error}
+              </p>
+            )}
+
+            <button onClick={handlePostular} disabled={enviando}
+              className="w-full py-4 rounded-2xl bg-[var(--sc-600)] text-white font-black text-sm active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2">
+              {enviando
+                ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Enviando...</>
+                : <>📩 Enviar postulación</>
+              }
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Jobs principal ────────────────────────────────────────────────────────────
 export default function Jobs() {
-  const [empleos,       setEmpleos]       = useState<Empleo[]>([]);
-  const [cargando,      setCargando]      = useState(true);
-  const [cargandoMas,   setCargandoMas]   = useState(false);
-  const [hayMas,        setHayMas]        = useState(true);
-  const [error,         setError]         = useState('');
-  const [filtro,        setFiltro]        = useState('todos');
-  const [busqueda,      setBusqueda]      = useState('');
-  const [isMenuOpen,    setIsMenuOpen]    = useState(false);
-  const [modalAbierto,  setModalAbierto]  = useState(false);
-  const [empleoEditar,  setEmpleoEditar]  = useState<Empleo | null>(null);
-  const [eliminandoId,  setEliminandoId]  = useState<string | null>(null);
-  const [usuario,       setUsuario]       = useState<User | null>(null);
+  const navigate = useNavigate();
+  const [empleos,        setEmpleos]        = useState<Empleo[]>([]);
+  const [cargando,       setCargando]       = useState(true);
+  const [cargandoMas,    setCargandoMas]    = useState(false);
+  const [hayMas,         setHayMas]         = useState(true);
+  const [error,          setError]          = useState('');
+  const [filtro,         setFiltro]         = useState('todos');
+  const [busqueda,       setBusqueda]       = useState('');
+  const [isMenuOpen,     setIsMenuOpen]     = useState(false);
+  const [modalAbierto,   setModalAbierto]   = useState(false);
+  const [empleoEditar,   setEmpleoEditar]   = useState<Empleo | null>(null);
+  const [eliminandoId,   setEliminandoId]   = useState<string | null>(null);
+  const [postulando,     setPostulando]     = useState<Empleo | null>(null);
+  const [usuario,        setUsuario]        = useState<User | null>(null);
+  const [accountType,    setAccountType]    = useState<string>('');
+  const [yaPostulado,    setYaPostulado]    = useState<Set<string>>(new Set());
   const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUsuario);
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setUsuario(u);
+      if (u) {
+        const snap = await getDoc(doc(db, 'users', u.uid));
+        if (snap.exists()) setAccountType(snap.data().accountType ?? '');
+      }
+    });
     return () => unsub();
   }, []);
 
   useEffect(() => {
-    setCargando(true);
-    setEmpleos([]);
-    lastDocRef.current = null;
-    setHayMas(true);
-
+    setCargando(true); setEmpleos([]); lastDocRef.current = null; setHayMas(true);
     const q = query(collection(db, 'empleos'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
     const unsub = onSnapshot(q,
       (snap) => {
@@ -269,6 +466,24 @@ export default function Jobs() {
     );
     return () => unsub();
   }, []);
+
+  // Verificar postulaciones del usuario
+  useEffect(() => {
+    if (!usuario || empleos.length === 0) return;
+    const checkPostulaciones = async () => {
+      const nuevos = new Set<string>();
+      await Promise.all(empleos.map(async (e) => {
+        const q = query(
+          collection(db, 'empleos', e.id, 'postulaciones'),
+          where('uid', '==', usuario.uid)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) nuevos.add(e.id);
+      }));
+      setYaPostulado(nuevos);
+    };
+    checkPostulaciones();
+  }, [usuario, empleos]);
 
   async function cargarMas() {
     if (!lastDocRef.current || cargandoMas || !hayMas) return;
@@ -301,13 +516,28 @@ export default function Jobs() {
     return coincideTipo && coincideTexto;
   });
 
+  const esEmpresa = accountType === 'empresa';
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-5 py-4 shadow-sm">
-        <h1 className="text-2xl font-black text-[var(--sc-700)] dark:text-[var(--sc-100)] tracking-tighter">Empleos</h1>
-        <p className="text-gray-400 dark:text-gray-500 text-xs">
-          {cargando ? 'Cargando...' : `${empleosFiltrados.length} oferta${empleosFiltrados.length !== 1 ? 's' : ''} disponible${empleosFiltrados.length !== 1 ? 's' : ''}`}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-black text-[var(--sc-700)] dark:text-[var(--sc-100)] tracking-tighter">Empleos</h1>
+            <p className="text-gray-400 dark:text-gray-500 text-xs">
+              {cargando ? 'Cargando...' : `${empleosFiltrados.length} oferta${empleosFiltrados.length !== 1 ? 's' : ''} disponible${empleosFiltrados.length !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+          {esEmpresa && (
+            <button
+              onClick={() => navigate('/mis-postulaciones')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-black active:scale-95"
+            >
+              <UserGroupIcon className="w-4 h-4" />
+              Candidatos
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="px-4 pt-4">
@@ -322,7 +552,7 @@ export default function Jobs() {
       <div className="px-4 pt-3 overflow-x-auto">
         <div className="flex gap-2 pb-1">
           {TIPOS.map((t) => (
-            <button key={t} onClick={() => setFiltro(t)} aria-pressed={filtro === t}
+            <button key={t} onClick={() => setFiltro(t)}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-black transition-all active:scale-95 ${
                 filtro === t
                   ? 'bg-[var(--sc-600)] text-white shadow-md'
@@ -342,7 +572,7 @@ export default function Jobs() {
         )}
 
         {error && (
-          <div className="flex items-center gap-2 p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl text-red-600 dark:text-red-400 text-sm" role="alert">
+          <div className="flex items-center gap-2 p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl text-red-600 text-sm">
             <ExclamationCircleIcon className="w-5 h-5 shrink-0" />{error}
           </div>
         )}
@@ -353,14 +583,14 @@ export default function Jobs() {
             <p className="text-gray-500 dark:text-gray-400 font-bold">
               {busqueda ? `Sin resultados para "${busqueda}"` : 'No hay empleos disponibles'}
             </p>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
-              {busqueda ? 'Probá con otra búsqueda' : 'Volvé más tarde'}
-            </p>
           </div>
         )}
 
         {empleosFiltrados.map((empleo) => {
-          const esMio = usuario?.uid === empleo.uid;
+          const esMio       = usuario?.uid === empleo.uid;
+          const postulado   = yaPostulado.has(empleo.id);
+          const tieneReqs   = (empleo.requisitos?.length ?? 0) > 0;
+
           return (
             <article key={empleo.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
               <div className="p-4">
@@ -380,12 +610,16 @@ export default function Jobs() {
                     </span>
                     {esMio && (
                       <>
+                        <button onClick={() => navigate(`/mis-postulaciones?empleoId=${empleo.id}`)}
+                          className="p-1.5 rounded-full bg-blue-50 dark:bg-blue-900/20 active:scale-90">
+                          <ClipboardDocumentListIcon className="w-3.5 h-3.5 text-blue-500" />
+                        </button>
                         <button onClick={() => { setEmpleoEditar(empleo); setModalAbierto(true); }}
-                          className="p-1.5 rounded-full bg-blue-50 dark:bg-blue-900/20 active:scale-90 transition-transform">
+                          className="p-1.5 rounded-full bg-blue-50 dark:bg-blue-900/20 active:scale-90">
                           <PencilIcon className="w-3.5 h-3.5 text-blue-500" />
                         </button>
                         <button onClick={() => setEliminandoId(eliminandoId === empleo.id ? null : empleo.id)}
-                          className="p-1.5 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90 transition-transform">
+                          className="p-1.5 rounded-full bg-red-50 dark:bg-red-900/20 active:scale-90">
                           <TrashIcon className="w-3.5 h-3.5 text-red-500" />
                         </button>
                       </>
@@ -395,18 +629,25 @@ export default function Jobs() {
 
                 {eliminandoId === empleo.id && (
                   <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-2xl flex items-center justify-between">
-                    <p className="text-xs text-red-700 dark:text-red-300 font-bold">¿Eliminar esta oferta?</p>
+                    <p className="text-xs text-red-700 font-bold">¿Eliminar esta oferta?</p>
                     <div className="flex gap-2">
-                      <button onClick={() => handleEliminar(empleo)} className="text-xs bg-red-500 text-white px-3 py-1 rounded-full font-bold active:scale-95">Sí</button>
-                      <button onClick={() => setEliminandoId(null)} className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full font-bold active:scale-95">No</button>
+                      <button onClick={() => handleEliminar(empleo)} className="text-xs bg-red-500 text-white px-3 py-1 rounded-full font-bold">Sí</button>
+                      <button onClick={() => setEliminandoId(null)} className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 px-3 py-1 rounded-full font-bold">No</button>
                     </div>
                   </div>
                 )}
 
                 <p className="text-gray-600 dark:text-gray-400 text-xs leading-relaxed mb-3 line-clamp-2">{empleo.descripcion}</p>
 
+                {tieneReqs && (
+                  <div className="mb-3 flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 font-bold">
+                    <ClipboardDocumentListIcon className="w-3.5 h-3.5" />
+                    {empleo.requisitos!.length} requisito{empleo.requisitos!.length !== 1 ? 's' : ''} para postularse
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+                  <div className="flex items-center gap-3 text-xs text-gray-400">
                     <span className="flex items-center gap-1">
                       <MapPinIcon className="w-3.5 h-3.5 shrink-0" />{empleo.ubicacion}
                     </span>
@@ -416,17 +657,31 @@ export default function Jobs() {
                       </span>
                     )}
                   </div>
-                  {empleo.contacto && (
-                    <a href={empleo.contacto.includes('@') ? `mailto:${empleo.contacto}` : `https://wa.me/${empleo.contacto.replace(/\D/g,'')}`}
-                      target="_blank" rel="noreferrer"
-                      className="flex items-center gap-1 text-xs text-[var(--sc-600)] font-bold active:scale-95 transition-transform">
-                      <EnvelopeIcon className="w-3.5 h-3.5" />Contactar
-                    </a>
-                  )}
-                  {empleo.createdAt && (
-                    <span className="text-[10px] text-gray-300 dark:text-gray-600 ml-auto">{formatFecha(empleo.createdAt)}</span>
-                  )}
+                  <div className="flex items-center gap-2 ml-auto">
+                    {empleo.contacto && (
+                      <a href={empleo.contacto.includes('@') ? `mailto:${empleo.contacto}` : `https://wa.me/${empleo.contacto.replace(/\D/g,'')}`}
+                        target="_blank" rel="noreferrer"
+                        className="flex items-center gap-1 text-xs text-[var(--sc-600)] font-bold active:scale-95">
+                        <EnvelopeIcon className="w-3.5 h-3.5" />Contactar
+                      </a>
+                    )}
+                    {usuario && !esMio && !esEmpresa && (
+                      <button
+                        onClick={() => !postulado && setPostulando(empleo)}
+                        disabled={postulado}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all active:scale-95 ${
+                          postulado
+                            ? 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400'
+                            : 'bg-[var(--sc-500)] text-white shadow-sm'
+                        }`}>
+                        {postulado ? '✅ Postulado' : '📩 Postularme'}
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {empleo.createdAt && (
+                  <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-2">{formatFecha(empleo.createdAt)}</p>
+                )}
               </div>
 
               {empleo.mediaUrl && (
@@ -438,14 +693,12 @@ export default function Jobs() {
           );
         })}
 
-        {/* Cargar más */}
         {hayMas && empleosFiltrados.length > 0 && !busqueda && filtro === 'todos' && (
           <button onClick={cargarMas} disabled={cargandoMas}
-            className="w-full py-3 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold active:scale-95 transition-all disabled:opacity-50">
+            className="w-full py-3 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 text-sm font-bold active:scale-95 disabled:opacity-50">
             {cargandoMas ? (
               <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                Cargando...
+                <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />Cargando...
               </span>
             ) : 'Ver más empleos'}
           </button>
@@ -454,8 +707,7 @@ export default function Jobs() {
 
       {usuario && (
         <button onClick={() => { setEmpleoEditar(null); setModalAbierto(true); }}
-          aria-label="Publicar empleo"
-          className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-[var(--sc-600)] hover:bg-[var(--sc-700)] text-white shadow-lg flex items-center justify-center transition-all active:scale-90">
+          className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-[var(--sc-600)] text-white shadow-lg flex items-center justify-center active:scale-90">
           <PlusIcon className="w-7 h-7" />
         </button>
       )}
@@ -467,8 +719,15 @@ export default function Jobs() {
         />
       )}
 
+      {postulando && (
+        <ModalPostularse
+          empleo={postulando}
+          onClose={() => setPostulando(null)}
+        />
+      )}
+
       <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-}
+                                                              }
