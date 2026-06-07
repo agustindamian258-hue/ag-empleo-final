@@ -1,3 +1,4 @@
+// src/pages/Login.tsx
 import { auth, provider, db } from '../app/firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -26,11 +27,19 @@ export default function Login() {
           ciudad:      '',
           descripcion: '',
           role:        'user',
+          accountType: '',
           createdAt:   serverTimestamp(),
           updatedAt:   serverTimestamp(),
         });
+        navigate('/onboarding', { replace: true });
+      } else {
+        const data = snap.data();
+        if (!data.onboardingDone) {
+          navigate('/onboarding', { replace: true });
+        } else {
+          navigate('/', { replace: true });
+        }
       }
-      navigate('/');
     } catch (e) {
       if (e instanceof FirebaseError &&
           e.code === 'auth/popup-closed-by-user') {
@@ -81,4 +90,4 @@ export default function Login() {
       </div>
     </div>
   );
-        }
+}
