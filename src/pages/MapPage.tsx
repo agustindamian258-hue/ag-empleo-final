@@ -8,7 +8,7 @@ import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firest
 import { useNavigate } from 'react-router-dom';
 import {
   XMarkIcon, MapPinIcon, ExclamationCircleIcon,
-  PlusIcon, CheckIcon,
+  PlusIcon, CheckIcon, MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -32,6 +32,7 @@ interface FormChanga {
   descripcion: string;
   pago:        string;
   urgencia:    'urgente' | 'semana' | 'mes';
+  direccion:   string;
 }
 
 type Coordenada = [number, number];
@@ -79,6 +80,7 @@ function CentrarMapa({ centro }: { centro: Coordenada }) {
   return null;
 }
 
+// Mantener selector por mapa como opción secundaria
 function SelectorUbicacion({
   activo,
   onSeleccionar,
@@ -95,8 +97,25 @@ function SelectorUbicacion({
 }
 
 const FORM_INICIAL: FormChanga = {
-  titulo: '', descripcion: '', pago: '', urgencia: 'urgente',
+  titulo: '', descripcion: '', pago: '', urgencia: 'urgente', direccion: '',
 };
+
+// Geocodificar dirección con OpenStreetMap Nominatim (gratuito, sin key)
+async function geocodificar(direccion: string): Promise<Coordenada | null> {
+  try {
+    const query    = encodeURIComponent(`${direccion}, Argentina`);
+    const url      = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`;
+    const response = await fetch(url, {
+      headers: { 'Accept-Language': 'es', 'User-Agent': 'AG-Empleo-App' },
+    });
+    const data = await response.json();
+    if (data.length === 0) return null;
+    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  } catch (e) {
+    console.error('[MapPage] geocodificar:', e);
+    return null;
+  }
+}
 
 export default function MapPage() {
   const navigate = useNavigate();
@@ -114,7 +133,9 @@ export default function MapPage() {
   const [posSelec,       setPosSelec]       = useState<Coordenada | null>(null);
   const [eligiendoPos,   setEligiendoPos]   = useState(false);
   const [guardando,      setGuardando]      = useState(false);
+  const [geocodificando, setGeocodificando] = useState(false);
   const [errForm,        setErrForm]        = useState('');
+  const [direccionOk,    setDireccionOk]    = useState(false);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -167,12 +188,52 @@ export default function MapPage() {
   }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((p) => ({ ...p, [name]: value }));
+    // Si cambia la dirección, resetear la posición confirmada
+    if (name === 'direccion') {
+      setPosSelec(null);
+      setDireccionOk(false);
+    }
+  }
+
+  async function buscarDireccion() {
+    if (!form.direccion.trim()) {
+      setErrForm('Escribí una dirección primero.'); return;
+    }
+    setGeocodificando(true);
+    setErrForm('');
+    const coords = await geocodificar(form.direccion);
+    setGeocodificando(false);
+    if (!coords) {
+      setErrForm('No se encontró esa dirección. Probá con más detalle (ej: "Av. Corrientes 1234, Buenos Aires").');
+      return;
+    }
+    setPosSelec(coords);
+    setDireccionOk(true);
   }
 
   async function handlePublicar() {
     if (!form.titulo.trim()) { setErrForm('El título es obligatorio.'); return; }
-    if (!posSelec)           { setErrForm('Tocá el mapa para elegir la ubicación.'); return; }
+
+    let coordsFinales = posSelec;
+
+    // Si hay dirección pero no se buscó todavía, geocodificar al publicar
+    if (!coordsFinales && form.direccion.trim()) {
+      setGeocodificando(true);
+      coordsFinales = await geocodificar(form.direccion);
+      setGeocodificando(false);
+      if (!coordsFinales) {
+        setErrForm('No se encontró esa dirección. Intentá con otra más detallada.');
+        return;
+      }
+    }
+
+    if (!coordsFinales) {
+      setErrForm('Escribí una dirección o elegí la ubicación en el mapa.');
+      return;
+    }
+
     setGuardando(true);
     setErrForm('');
     try {
@@ -181,13 +242,15 @@ export default function MapPage() {
         descripcion: form.descripcion.trim() || null,
         pago:        form.pago.trim() || null,
         urgencia:    form.urgencia,
-        posicion:    posSelec,
+        posicion:    coordsFinales,
+        direccion:   form.direccion.trim() || null,
         uid:         auth.currentUser?.uid ?? null,
         userName:    auth.currentUser?.displayName ?? 'Usuario',
         createdAt:   serverTimestamp(),
       });
       setForm(FORM_INICIAL);
       setPosSelec(null);
+      setDireccionOk(false);
       setEligiendoPos(false);
       setModalAbierto(false);
     } catch (err) {
@@ -229,7 +292,7 @@ export default function MapPage() {
       {eligiendoPos && (
         <div className="px-4 py-2 bg-green-500 flex items-center justify-between text-white text-xs font-bold">
           <span>📍 Tocá el mapa para marcar la ubicación</span>
-          <button onClick={() => setEligiendoPos(false)} className="underline">Cancelar</button>
+          <button onClick={() => { setEligiendoPos(false); setModalAbierto(true); }} className="underline">Cancelar</button>
         </div>
       )}
 
@@ -242,9 +305,8 @@ export default function MapPage() {
           type="range" min="1" max="100" value={distancia}
           onChange={(e) => setDistancia(parseInt(e.target.value, 10))}
           className="w-full accent-blue-600"
-          aria-label={`Radio de búsqueda: ${distancia} kilómetros`}
         />
-        <div className="flex gap-2" role="group" aria-label="Filtrar por urgencia">
+        <div className="flex gap-2">
           {FILTROS_URGENCIA.map((u) => (
             <button
               key={u.id}
@@ -282,6 +344,7 @@ export default function MapPage() {
             activo={eligiendoPos}
             onSeleccionar={(pos) => {
               setPosSelec(pos);
+              setDireccionOk(true);
               setEligiendoPos(false);
               setModalAbierto(true);
             }}
@@ -311,7 +374,13 @@ export default function MapPage() {
 
         {auth.currentUser && !eligiendoPos && (
           <button
-            onClick={() => setEligiendoPos(true)}
+            onClick={() => {
+              setForm(FORM_INICIAL);
+              setPosSelec(null);
+              setDireccionOk(false);
+              setErrForm('');
+              setModalAbierto(true);
+            }}
             className="absolute bottom-6 right-4 z-[400] w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg flex items-center justify-center transition-all active:scale-90"
             aria-label="Publicar changa"
           >
@@ -325,7 +394,9 @@ export default function MapPage() {
           className="fixed inset-0 z-[500] flex items-end justify-center bg-black/50 backdrop-blur-sm"
           onClick={(e) => e.target === e.currentTarget && setModalAbierto(false)}
         >
-          <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-4 animate-slide-up">
+          <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 space-y-4 animate-slide-up overflow-y-auto"
+            style={{ maxHeight: '85vh' }}>
+
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-black text-gray-800 dark:text-gray-100">Publicar Changa</h2>
               <button
@@ -336,19 +407,49 @@ export default function MapPage() {
               </button>
             </div>
 
-            {posSelec && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/20 rounded-2xl text-green-700 dark:text-green-400 text-xs font-bold">
-                <CheckIcon className="w-4 h-4 shrink-0" />
-                Ubicación marcada en el mapa
+            {/* Campo dirección con botón buscar */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Dirección *
+              </label>
+              <div className="flex gap-2">
+                <input
+                  name="direccion"
+                  value={form.direccion}
+                  onChange={handleChange}
+                  placeholder="Ej: Av. Corrientes 1234, Buenos Aires"
+                  className={`${inputBase} flex-1`}
+                  maxLength={120}
+                  onKeyDown={(e) => e.key === 'Enter' && buscarDireccion()}
+                />
+                <button
+                  onClick={buscarDireccion}
+                  disabled={geocodificando}
+                  className="px-3 py-2 rounded-2xl bg-green-500 text-white font-black text-xs active:scale-95 disabled:opacity-50 shrink-0 flex items-center gap-1"
+                >
+                  {geocodificando
+                    ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <MagnifyingGlassIcon className="w-4 h-4" />
+                  }
+                </button>
               </div>
-            )}
 
+              {/* Estado de la dirección */}
+              {direccionOk && posSelec && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-xl text-green-700 dark:text-green-400 text-xs font-bold">
+                  <CheckIcon className="w-4 h-4 shrink-0" />
+                  Ubicación encontrada en el mapa ✓
+                </div>
+              )}
+            </div>
+
+            {/* Opción secundaria: elegir en el mapa */}
             <button
               onClick={() => { setModalAbierto(false); setEligiendoPos(true); }}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-dashed border-green-400 text-green-600 dark:text-green-400 text-sm font-bold active:scale-95 transition-transform"
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl border border-dashed border-green-400 text-green-600 dark:text-green-400 text-xs font-bold active:scale-95 transition-transform"
             >
-              <MapPinIcon className="w-5 h-5" />
-              {posSelec ? 'Cambiar ubicación en el mapa' : 'Elegir ubicación en el mapa'}
+              <MapPinIcon className="w-4 h-4" />
+              {posSelec ? 'Cambiar ubicación tocando el mapa' : 'O elegí tocando el mapa'}
             </button>
 
             <input
@@ -405,7 +506,7 @@ export default function MapPage() {
 
             <button
               onClick={handlePublicar}
-              disabled={guardando}
+              disabled={guardando || geocodificando}
               className="w-full py-3.5 rounded-2xl bg-green-500 hover:bg-green-600 text-white font-black text-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {guardando ? (
@@ -417,4 +518,4 @@ export default function MapPage() {
       )}
     </div>
   );
-                                }
+    }
