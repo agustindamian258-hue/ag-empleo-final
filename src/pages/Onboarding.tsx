@@ -9,16 +9,20 @@ type AccountType = 'persona' | 'empresa';
 
 const NIVELES = ['Sin experiencia', 'Junior (0-2 años)', 'Semi-Senior (2-5 años)', 'Senior (5+ años)'];
 
-export default function Onboarding() {
+interface OnboardingProps {
+  onDone?: () => void;
+}
+
+export default function Onboarding({ onDone }: OnboardingProps) {
   const user     = auth.currentUser;
   const navigate = useNavigate();
 
-  const [paso,           setPaso]           = useState(1);
-  const [guardando,      setGuardando]      = useState(false);
-  const [error,          setError]          = useState('');
-  const [accountType,    setAccountType]    = useState<AccountType | null>(null);
-  const [usuarioExiste,  setUsuarioExiste]  = useState(false);
-  const [verificando,    setVerificando]    = useState(true);
+  const [paso,          setPaso]          = useState(1);
+  const [guardando,     setGuardando]     = useState(false);
+  const [error,         setError]         = useState('');
+  const [accountType,   setAccountType]   = useState<AccountType | null>(null);
+  const [usuarioExiste, setUsuarioExiste] = useState(false);
+  const [verificando,   setVerificando]   = useState(true);
 
   const [formPersona, setFormPersona] = useState({
     name:             user?.displayName || '',
@@ -40,7 +44,6 @@ export default function Onboarding() {
     contacto:      '',
   });
 
-  // Verificar si el usuario ya existe y solo le falta accountType
   useEffect(() => {
     async function verificar() {
       if (!user) { setVerificando(false); return; }
@@ -49,7 +52,6 @@ export default function Onboarding() {
         if (snap.exists()) {
           const data = snap.data();
           setUsuarioExiste(true);
-          // Pre-llenar con datos existentes
           setFormPersona((p) => ({
             ...p,
             name:             data.name             || user.displayName || '',
@@ -79,17 +81,16 @@ export default function Onboarding() {
 
   const inputCls = 'w-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-500] placeholder-gray-400';
 
-  // Pasos según tipo — si el usuario ya existe, saltamos los pasos de perfil
   const PASOS_PERSONA = usuarioExiste
     ? [
         { id: 1, titulo: '👋 ¿Quién sos?',  subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
         { id: 2, titulo: '🎉 ¡Todo listo!', subtitulo: 'Ya podés empezar a usar AG Empleo.' },
       ]
     : [
-        { id: 1, titulo: '👋 ¿Quién sos?',        subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
-        { id: 2, titulo: '👤 Contanos sobre vos',  subtitulo: 'Completá tu perfil básico.' },
-        { id: 3, titulo: '💼 Tu perfil laboral',   subtitulo: 'Para que las empresas te encuentren.' },
-        { id: 4, titulo: '🎉 ¡Todo listo!',        subtitulo: 'Ya podés empezar a usar AG Empleo.' },
+        { id: 1, titulo: '👋 ¿Quién sos?',       subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
+        { id: 2, titulo: '👤 Contanos sobre vos', subtitulo: 'Completá tu perfil básico.' },
+        { id: 3, titulo: '💼 Tu perfil laboral',  subtitulo: 'Para que las empresas te encuentren.' },
+        { id: 4, titulo: '🎉 ¡Todo listo!',       subtitulo: 'Ya podés empezar a usar AG Empleo.' },
       ];
 
   const PASOS_EMPRESA = usuarioExiste
@@ -98,14 +99,15 @@ export default function Onboarding() {
         { id: 2, titulo: '🎉 ¡Todo listo!', subtitulo: 'Ya podés publicar empleos en AG Empleo.' },
       ]
     : [
-        { id: 1, titulo: '👋 ¿Quién sos?',  subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
-        { id: 2, titulo: '🏢 Tu empresa',   subtitulo: 'Completá los datos de tu empresa.' },
+        { id: 1, titulo: '👋 ¿Quién sos?', subtitulo: 'Contanos cómo vas a usar AG Empleo.' },
+        { id: 2, titulo: '🏢 Tu empresa',  subtitulo: 'Completá los datos de tu empresa.' },
         { id: 3, titulo: '🎉 ¡Todo listo!', subtitulo: 'Ya podés publicar empleos en AG Empleo.' },
       ];
 
-  const PASOS     = accountType === 'empresa' ? PASOS_EMPRESA : PASOS_PERSONA;
+  const PASOS      = accountType === 'empresa' ? PASOS_EMPRESA : PASOS_PERSONA;
   const totalPasos = accountType ? PASOS.length : 1;
   const progreso   = accountType ? ((paso - 1) / (totalPasos - 1)) * 100 : 0;
+  const esPasoFinal = accountType && paso === totalPasos;
 
   function handleChangePersona(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     setFormPersona((p) => ({ ...p, [e.target.name]: e.target.value }));
@@ -137,7 +139,6 @@ export default function Onboarding() {
     setGuardando(true); setError('');
     try {
       if (usuarioExiste) {
-        // Solo actualizar accountType y onboardingDone
         await updateDoc(doc(db, 'users', user.uid), {
           accountType,
           onboardingDone: true,
@@ -174,7 +175,13 @@ export default function Onboarding() {
           createdAt:      serverTimestamp(),
         });
       }
-      navigate('/', { replace: true });
+
+      // Llamar onDone si existe (usuarios existentes), sino navegar
+      if (onDone) {
+        onDone();
+      } else {
+        navigate('/', { replace: true });
+      }
     } catch (e) {
       console.error('[Onboarding]', e);
       setError('No se pudo guardar. Intentá de nuevo.');
@@ -188,8 +195,6 @@ export default function Onboarding() {
       </div>
     );
   }
-
-  const esPasoFinal = accountType && paso === totalPasos;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col">
@@ -352,8 +357,8 @@ export default function Onboarding() {
               <p className="text-xl font-black text-gray-900 dark:text-white">¡Todo listo!</p>
               <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
                 {accountType === 'empresa'
-                  ? `Ya podés publicar empleos y encontrar candidatos.`
-                  : `Ya podés explorar todas las funciones de AG Empleo.`
+                  ? 'Ya podés publicar empleos y encontrar candidatos.'
+                  : 'Ya podés explorar todas las funciones de AG Empleo.'
                 }
               </p>
             </div>
@@ -399,4 +404,4 @@ export default function Onboarding() {
       </div>
     </div>
   );
-      }
+}
