@@ -21,9 +21,20 @@ import Messages             from '../pages/Messages';
 import Chat                 from '../pages/Chat';
 import NotFound             from '../pages/NotFound';
 import MisPostulaciones     from '../pages/MisPostulaciones';
+import Onboarding           from '../pages/Onboarding';
 
-interface AppRoutesProps      { user: User | null; loading: boolean; }
-interface ProtectedRouteProps { user: User | null; loading: boolean; children: React.ReactElement; }
+interface AppRoutesProps {
+  user:          User | null;
+  loading:       boolean;
+  needsOnboard?: boolean;
+  onOnboardDone?: () => void;
+}
+
+interface ProtectedRouteProps {
+  user:     User | null;
+  loading:  boolean;
+  children: React.ReactElement;
+}
 
 function LoadingScreen() {
   return (
@@ -56,16 +67,26 @@ function SyncMode() {
   return null;
 }
 
-export default function AppRoutes({ user, loading }: AppRoutesProps) {
+export default function AppRoutes({ user, loading, needsOnboard, onOnboardDone }: AppRoutesProps) {
   const PR = (el: React.ReactElement) => (
     <ProtectedRoute user={user} loading={loading}>{el}</ProtectedRoute>
   );
+
+  // Si el usuario está logueado y necesita onboarding, mostrar solo esa pantalla
+  if (user && needsOnboard) {
+    return (
+      <BrowserRouter>
+        <Onboarding onDone={onOnboardDone} />
+      </BrowserRouter>
+    );
+  }
 
   return (
     <BrowserRouter>
       <SyncMode />
       <Routes>
         <Route path="/login" element={loading ? <LoadingScreen /> : !user ? <Login /> : <Navigate to="/" replace />} />
+        <Route path="/onboarding" element={PR(<Onboarding />)} />
 
         <Route path="/"                      element={PR(<Home />)}                  />
         <Route path="/jobs"                  element={PR(<Jobs />)}                  />
