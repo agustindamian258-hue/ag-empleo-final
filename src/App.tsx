@@ -29,8 +29,9 @@ function LoadingScreen() {
 
 function AppContent() {
   const { isSocialMode, setUser, socialColor, darkMode } = useTheme();
-  const [user,    setLocalUser] = useState<User | null | undefined>(undefined);
-  const [loading, setLoading]   = useState(true);
+  const [user,          setLocalUser] = useState<User | null | undefined>(undefined);
+  const [needsOnboard,  setNeedsOnboard] = useState(false);
+  const [checked,       setChecked]   = useState(false);
 
   useEffect(() => {
     const vars = COLOR_VARS[socialColor] ?? COLOR_VARS.blue;
@@ -48,14 +49,12 @@ function AppContent() {
       setUser(u);
 
       if (u) {
-        // Verificar si el usuario existente necesita elegir tipo de cuenta
         try {
           const snap = await getDoc(doc(db, 'users', u.uid));
           if (snap.exists()) {
             const data = snap.data();
-            // Si no tiene accountType ni onboardingDone, mandar a onboarding
             if (!data.accountType || !data.onboardingDone) {
-              window.location.href = '/onboarding';
+              setNeedsOnboard(true);
             }
           }
         } catch (e) {
@@ -63,16 +62,21 @@ function AppContent() {
         }
       }
 
-      setLoading(false);
+      setChecked(true);
     });
     return () => unsub();
   }, [setUser]);
 
-  if (user === undefined || loading) return <LoadingScreen />;
+  if (user === undefined || !checked) return <LoadingScreen />;
 
   return (
     <div className={isSocialMode ? 'theme-social' : 'theme-empleo'}>
-      <AppRoutes user={user} loading={false} />
+      <AppRoutes
+        user={user}
+        loading={false}
+        needsOnboard={needsOnboard}
+        onOnboardDone={() => setNeedsOnboard(false)}
+      />
       <InstallBanner />
     </div>
   );
