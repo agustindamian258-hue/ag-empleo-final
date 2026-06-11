@@ -3,7 +3,7 @@ import { auth, provider, db } from '../app/firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useState } from 'react';
 
 export default function Login() {
@@ -15,8 +15,8 @@ export default function Login() {
     setCargando(true);
     setError('');
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user   = result.user;
+      const result  = await signInWithPopup(auth, provider);
+      const user    = result.user;
       const userRef = doc(db, 'users', user.uid);
       const snap    = await getDoc(userRef);
       if (!snap.exists()) {
@@ -85,9 +85,17 @@ export default function Login() {
           </p>
         )}
         <p className="text-xs text-gray-400 text-center">
-          Al continuar aceptás las políticas de privacidad de AG EMPLEO
+          Al continuar aceptás los{' '}
+          <Link to="/terminos" className="text-blue-500 underline">
+            Términos y Condiciones
+          </Link>
+          {' '}y las{' '}
+          <Link to="/privacidad" className="text-blue-500 underline">
+            Políticas de Privacidad
+          </Link>
+          {' '}de AG EMPLEO
         </p>
       </div>
     </div>
   );
-}
+      }
