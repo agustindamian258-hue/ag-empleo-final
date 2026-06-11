@@ -12,6 +12,7 @@ import Reels                from '../pages/Reels';
 import Login                from '../pages/Login';
 import Profile              from '../pages/Profile';
 import UserProfile          from '../pages/UserProfile';
+import EmpresaPerfil        from '../pages/EmpresaPerfil';
 import SearchUsers          from '../pages/SearchUsers';
 import MapPage              from '../pages/MapPage';
 import Privacidad           from '../pages/Privacidad';
@@ -99,7 +100,8 @@ export default function AppRoutes({ user, loading, needsOnboard, onOnboardDone }
         <Route path="/reels"                 element={PR(<Reels />)}                 />
         <Route path="/profile"               element={PR(<Profile />)}               />
         <Route path="/user/:uid"             element={PR(<UserProfile />)}           />
-        <Route path="/search"               element={PR(<SearchUsers />)}           />
+        <Route path="/empresa/:uid"          element={PR(<EmpresaPerfil />)}         />
+        <Route path="/search"                element={PR(<SearchUsers />)}           />
         <Route path="/notificaciones"        element={PR(<Notifications />)}         />
         <Route path="/notificaciones-social" element={PR(<NotificacionesSocial />)} />
         <Route path="/messages"              element={PR(<Messages />)}              />
@@ -110,4 +112,4 @@ export default function AppRoutes({ user, loading, needsOnboard, onOnboardDone }
       </Routes>
     </BrowserRouter>
   );
-}
+          }
