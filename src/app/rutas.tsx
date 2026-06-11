@@ -15,6 +15,7 @@ import UserProfile          from '../pages/UserProfile';
 import SearchUsers          from '../pages/SearchUsers';
 import MapPage              from '../pages/MapPage';
 import Privacidad           from '../pages/Privacidad';
+import Terminos             from '../pages/Terminos';
 import Notifications        from '../pages/Notifications';
 import NotificacionesSocial from '../pages/NotificacionesSocial';
 import Messages             from '../pages/Messages';
@@ -24,9 +25,9 @@ import MisPostulaciones     from '../pages/MisPostulaciones';
 import Onboarding           from '../pages/Onboarding';
 
 interface AppRoutesProps {
-  user:          User | null;
-  loading:       boolean;
-  needsOnboard?: boolean;
+  user:           User | null;
+  loading:        boolean;
+  needsOnboard?:  boolean;
   onOnboardDone?: () => void;
 }
 
@@ -72,7 +73,6 @@ export default function AppRoutes({ user, loading, needsOnboard, onOnboardDone }
     <ProtectedRoute user={user} loading={loading}>{el}</ProtectedRoute>
   );
 
-  // Si el usuario está logueado y necesita onboarding, mostrar solo esa pantalla
   if (user && needsOnboard) {
     return (
       <BrowserRouter>
@@ -85,8 +85,10 @@ export default function AppRoutes({ user, loading, needsOnboard, onOnboardDone }
     <BrowserRouter>
       <SyncMode />
       <Routes>
-        <Route path="/login" element={loading ? <LoadingScreen /> : !user ? <Login /> : <Navigate to="/" replace />} />
+        <Route path="/login"      element={loading ? <LoadingScreen /> : !user ? <Login /> : <Navigate to="/" replace />} />
         <Route path="/onboarding" element={PR(<Onboarding />)} />
+        <Route path="/terminos"   element={<Terminos />} />
+        <Route path="/privacidad" element={<Privacidad />} />
 
         <Route path="/"                      element={PR(<Home />)}                  />
         <Route path="/jobs"                  element={PR(<Jobs />)}                  />
@@ -97,8 +99,7 @@ export default function AppRoutes({ user, loading, needsOnboard, onOnboardDone }
         <Route path="/reels"                 element={PR(<Reels />)}                 />
         <Route path="/profile"               element={PR(<Profile />)}               />
         <Route path="/user/:uid"             element={PR(<UserProfile />)}           />
-        <Route path="/search"                element={PR(<SearchUsers />)}           />
-        <Route path="/privacidad"            element={PR(<Privacidad />)}            />
+        <Route path="/search"               element={PR(<SearchUsers />)}           />
         <Route path="/notificaciones"        element={PR(<Notifications />)}         />
         <Route path="/notificaciones-social" element={PR(<NotificacionesSocial />)} />
         <Route path="/messages"              element={PR(<Messages />)}              />
