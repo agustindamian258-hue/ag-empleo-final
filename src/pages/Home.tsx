@@ -4,14 +4,16 @@ import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../app/firebase';
 import {
-  collection, query, orderBy, onSnapshot, limit, where, addDoc, serverTimestamp, getDoc, doc, getDocs
+  collection, query, orderBy, onSnapshot, limit, where,
+  addDoc, serverTimestamp, getDoc, doc, getDocs,
 } from 'firebase/firestore';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import FloatingAI from '../components/FloatingAI';
 import Feed from '../components/Feed';
 import {
-  BriefcaseIcon, MapPinIcon, CurrencyDollarIcon, EnvelopeIcon,
+  BriefcaseIcon, MapPinIcon, CurrencyDollarIcon,
+  EnvelopeIcon, StarIcon,
 } from '@heroicons/react/24/outline';
 
 interface Empleo {
@@ -24,12 +26,9 @@ interface Empleo {
   descripcion: string;
   contacto?:   string;
   uid?:        string;
+  destacado?:  boolean;
   requisitos?: { id: string; pregunta: string }[];
   createdAt:   { toDate: () => Date } | null;
-}
-
-interface Postulacion {
-  uid: string;
 }
 
 const BADGE_COLORS: Record<string, string> = {
@@ -44,13 +43,12 @@ export default function Home() {
   const [isPublishOpen, setIsPublishOpen] = useState<boolean>(false);
   const [empleos,       setEmpleos]       = useState<Empleo[]>([]);
   const [yaPostulado,   setYaPostulado]   = useState<Set<string>>(new Set());
-  const [postulando,    setPostulando]    = useState<Empleo | null>(null);
+  const [postulando,    setPostulando]    = useState<string | null>(null);
   const [accountType,   setAccountType]   = useState<string>('');
   const { user } = useTheme();
   const navigate = useNavigate();
   const nombre = user?.displayName?.split(' ')[0] || 'Bienvenido';
 
-  // Cargar accountType
   useEffect(() => {
     if (!user) return;
     getDoc(doc(db, 'users', user.uid)).then((snap) => {
@@ -58,10 +56,10 @@ export default function Home() {
     });
   }, [user]);
 
-  // Cargar últimos 5 empleos
   useEffect(() => {
     const q = query(
       collection(db, 'empleos'),
+      orderBy('destacado', 'desc'),
       orderBy('createdAt', 'desc'),
       limit(5)
     );
@@ -71,16 +69,12 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  // Verificar postulaciones
   useEffect(() => {
     if (!user || empleos.length === 0) return;
     const check = async () => {
       const nuevos = new Set<string>();
       await Promise.all(empleos.map(async (e) => {
-        const q = query(
-          collection(db, 'empleos', e.id, 'postulaciones'),
-          where('uid', '==', user.uid)
-        );
+        const q = query(collection(db, 'empleos', e.id, 'postulaciones'), where('uid', '==', user.uid));
         const snap = await getDocs(q);
         if (!snap.empty) nuevos.add(e.id);
       }));
@@ -90,42 +84,40 @@ export default function Home() {
   }, [user, empleos]);
 
   async function handlePostular(empleo: Empleo) {
-    if (!user) return;
-    const userSnap = await getDoc(doc(db, 'users', user.uid));
-    const userData = userSnap.exists() ? userSnap.data() : {};
-    const requisitos = empleo.requisitos ?? [];
-
-    // Si tiene requisitos, navegar a Jobs para responderlos
-    if (requisitos.length > 0) {
+    if (!user || postulando) return;
+    if ((empleo.requisitos?.length ?? 0) > 0) {
       navigate('/jobs');
       return;
     }
-
-    // Sin requisitos, postular directo
-    await addDoc(collection(db, 'empleos', empleo.id, 'postulaciones'), {
-      uid:       user.uid,
-      nombre:    userData.name     || user.displayName || 'Usuario',
-      foto:      userData.photo    || user.photoURL    || '',
-      ciudad:    userData.ciudad   || '',
-      cargo:     userData.cargoDeseado || '',
-      nivel:     userData.nivelExperiencia || '',
-      respuestas: {},
-      grupo:     'apto',
-      createdAt: serverTimestamp(),
-    });
-
-    if (empleo.uid) {
-      await addDoc(collection(db, 'notifications'), {
-        uid:      empleo.uid,
-        titulo:   `💼 Nueva postulación en "${empleo.titulo}"`,
-        mensaje:  `${userData.name || user.displayName || 'Alguien'} se postuló a tu oferta.`,
-        tipo:     'empleo',
-        leida:    false,
-        creadoEn: serverTimestamp(),
+    setPostulando(empleo.id);
+    try {
+      const userSnap = await getDoc(doc(db, 'users', user.uid));
+      const userData = userSnap.exists() ? userSnap.data() : {};
+      await addDoc(collection(db, 'empleos', empleo.id, 'postulaciones'), {
+        uid:        user.uid,
+        nombre:     userData.name     || user.displayName || 'Usuario',
+        foto:       userData.photo    || user.photoURL    || '',
+        ciudad:     userData.ciudad   || '',
+        cargo:      userData.cargoDeseado || '',
+        nivel:      userData.nivelExperiencia || '',
+        respuestas: {},
+        grupo:      'apto',
+        createdAt:  serverTimestamp(),
       });
-    }
-
-    setYaPostulado((prev) => new Set([...prev, empleo.id]));
+      if (empleo.uid) {
+        await addDoc(collection(db, 'notifications'), {
+          uid:      empleo.uid,
+          titulo:   `💼 Nueva postulación en "${empleo.titulo}"`,
+          mensaje:  `${userData.name || user.displayName || 'Alguien'} se postuló a tu oferta.`,
+          tipo:     'empleo',
+          leida:    false,
+          creadoEn: serverTimestamp(),
+        });
+      }
+      setYaPostulado((prev) => new Set([...prev, empleo.id]));
+    } catch (e) {
+      console.error('[Home] postular:', e);
+    } finally { setPostulando(null); }
   }
 
   const esEmpresa = accountType === 'empresa';
@@ -144,10 +136,7 @@ export default function Home() {
         <button
           onClick={() => navigate('/social')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full active:scale-95 transition-all"
-          style={{
-            background: 'linear-gradient(135deg, #1d4ed8, #2563eb)',
-            boxShadow: '0 3px 12px rgba(37,99,235,0.4)',
-          }}
+          style={{ background: 'linear-gradient(135deg, #1d4ed8, #2563eb)', boxShadow: '0 3px 12px rgba(37,99,235,0.4)' }}
         >
           <span className="text-[11px]">🌐</span>
           <span className="text-[10px] font-black text-white">Ir a Social</span>
@@ -155,8 +144,6 @@ export default function Home() {
       </header>
 
       <main className="px-4 pt-4 space-y-4">
-
-        {/* Últimas ofertas de empleo */}
         {empleos.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -168,11 +155,23 @@ export default function Home() {
             </div>
             <div className="space-y-3">
               {empleos.map((empleo) => {
-                const esMio    = user?.uid === empleo.uid;
+                const esMio     = user?.uid === empleo.uid;
                 const postulado = yaPostulado.has(empleo.id);
                 return (
                   <article key={empleo.id}
-                    className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
+                    className={`bg-white dark:bg-gray-900 rounded-2xl border shadow-sm p-4 ${
+                      empleo.destacado
+                        ? 'border-yellow-300 dark:border-yellow-600 ring-1 ring-yellow-200 dark:ring-yellow-700'
+                        : 'border-gray-100 dark:border-gray-800'
+                    }`}>
+
+                    {empleo.destacado && (
+                      <div className="flex items-center gap-1 mb-2">
+                        <StarIcon className="w-3.5 h-3.5 text-yellow-500" />
+                        <span className="text-[10px] font-black text-yellow-600 dark:text-yellow-400">OFERTA DESTACADA</span>
+                      </div>
+                    )}
+
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/20 rounded-xl flex items-center justify-center shrink-0">
@@ -180,7 +179,12 @@ export default function Home() {
                         </div>
                         <div>
                           <p className="font-black text-gray-800 dark:text-gray-100 text-sm">{empleo.titulo}</p>
-                          <p className="text-gray-500 dark:text-gray-400 text-xs">{empleo.empresa}</p>
+                          <button
+                            onClick={() => empleo.uid && navigate(`/empresa/${empleo.uid}`)}
+                            className="text-xs text-blue-500 dark:text-blue-400 font-bold active:opacity-60 text-left"
+                          >
+                            {empleo.empresa}
+                          </button>
                         </div>
                       </div>
                       <span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${BADGE_COLORS[empleo.tipo] ?? 'bg-gray-50 text-gray-600'}`}>
@@ -212,7 +216,7 @@ export default function Home() {
                         {user && !esMio && !esEmpresa && (
                           <button
                             onClick={() => !postulado && handlePostular(empleo)}
-                            disabled={postulado}
+                            disabled={postulado || postulando === empleo.id}
                             className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all active:scale-95 ${
                               postulado
                                 ? 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-400'
@@ -230,41 +234,26 @@ export default function Home() {
           </div>
         )}
 
-        {/* Feed de posts */}
         <div>
           <p className="font-black text-gray-800 dark:text-white text-sm mb-3">📢 Publicaciones</p>
           <Feed showCompose={false} zona="empleo" />
         </div>
-
       </main>
 
       {isPublishOpen && (
-        <div
-          className="fixed inset-0 z-[200] bg-black/60 flex items-end"
-          onClick={() => setIsPublishOpen(false)}
-        >
-          <div
-            className="w-full bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-4 pb-16 shadow-2xl animate-slide-up"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-[200] bg-black/60 flex items-end" onClick={() => setIsPublishOpen(false)}>
+          <div className="w-full bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-4 pb-16 shadow-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-4" />
             <p className="text-base font-black text-blue-700 dark:text-blue-400 mb-4">Nueva publicación</p>
-            <Feed
-              showCompose={true}
-              soloCompose={true}
-              zona="empleo"
-              onPublished={() => setIsPublishOpen(false)}
-            />
+            <Feed showCompose={true} soloCompose={true} zona="empleo" onPublished={() => setIsPublishOpen(false)} />
           </div>
         </div>
       )}
 
       <FloatingAI visorActivo={false} />
-      <Navbar
-        onMenuClick={() => setIsMenuOpen(true)}
-        onPublishClick={() => setIsPublishOpen(true)}
-      />
+      <Navbar onMenuClick={() => setIsMenuOpen(true)} onPublishClick={() => setIsPublishOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-          }
+                        }
