@@ -17,7 +17,7 @@ import {
   MagnifyingGlassIcon, ExclamationCircleIcon,
   PlusIcon, XMarkIcon, PhotoIcon, EnvelopeIcon,
   PencilIcon, TrashIcon, CheckIcon, UserGroupIcon,
-  ClipboardDocumentListIcon,
+  ClipboardDocumentListIcon, StarIcon,
 } from '@heroicons/react/24/outline';
 
 type TipoEmpleo = 'full-time' | 'part-time' | 'changa' | 'remoto';
@@ -40,6 +40,7 @@ interface Empleo {
   mediaType?:  'image' | 'video' | '';
   uid?:        string;
   requisitos?: Requisito[];
+  destacado?:  boolean;
   createdAt:   { toDate: () => Date } | null;
 }
 
@@ -160,7 +161,7 @@ function ModalPublicar({
         await updateDoc(doc(db, 'empleos', empleoEditar.id), { ...payload, editadoEn: serverTimestamp() });
       } else {
         await addDoc(collection(db, 'empleos'), {
-          ...payload, createdAt: serverTimestamp(), uid: auth.currentUser?.uid ?? null,
+          ...payload, createdAt: serverTimestamp(), uid: auth.currentUser?.uid ?? null, destacado: false,
         });
       }
       onClose();
@@ -212,7 +213,6 @@ function ModalPublicar({
           placeholder="Descripción del puesto *" rows={3}
           className={`${inputBase} resize-none`} maxLength={500} />
 
-        {/* Requisitos */}
         <div className="space-y-2">
           <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             Requisitos para postularse ({requisitos.length}/8)
@@ -280,12 +280,12 @@ function ModalPublicar({
 // ── Modal Postularse ──────────────────────────────────────────────────────────
 function ModalPostularse({ empleo, onClose }: { empleo: Empleo; onClose: () => void }) {
   const user = auth.currentUser;
-  const [respuestas,  setRespuestas]  = useState<Record<string, boolean>>({});
-  const [enviando,    setEnviando]    = useState(false);
-  const [enviado,     setEnviado]     = useState(false);
-  const [error,       setError]       = useState('');
+  const [respuestas, setRespuestas] = useState<Record<string, boolean>>({});
+  const [enviando,   setEnviando]   = useState(false);
+  const [enviado,    setEnviado]    = useState(false);
+  const [error,      setError]      = useState('');
 
-  const requisitos = empleo.requisitos ?? [];
+  const requisitos     = empleo.requisitos ?? [];
   const todoRespondido = requisitos.every((r) => respuestas[r.id] !== undefined);
 
   function calcularGrupo(): 'apto' | 'parcial' | 'no_apto' {
@@ -319,7 +319,6 @@ function ModalPostularse({ empleo, onClose }: { empleo: Empleo; onClose: () => v
         createdAt:  serverTimestamp(),
       });
 
-      // Notificación al empleador
       if (empleo.uid) {
         await addDoc(collection(db, 'notifications'), {
           uid:      empleo.uid,
@@ -340,7 +339,7 @@ function ModalPostularse({ empleo, onClose }: { empleo: Empleo; onClose: () => v
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl px-5 pt-5 pb-10 animate-slide-up overflow-y-auto"
+      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10 animate-slide-up overflow-y-auto"
         style={{ maxHeight: '80vh' }}>
 
         {enviado ? (
@@ -454,7 +453,7 @@ export default function Jobs() {
 
   useEffect(() => {
     setCargando(true); setEmpleos([]); lastDocRef.current = null; setHayMas(true);
-    const q = query(collection(db, 'empleos'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
+    const q = query(collection(db, 'empleos'), orderBy('destacado', 'desc'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
     const unsub = onSnapshot(q,
       (snap) => {
         setEmpleos(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Empleo)));
@@ -467,16 +466,12 @@ export default function Jobs() {
     return () => unsub();
   }, []);
 
-  // Verificar postulaciones del usuario
   useEffect(() => {
     if (!usuario || empleos.length === 0) return;
     const checkPostulaciones = async () => {
       const nuevos = new Set<string>();
       await Promise.all(empleos.map(async (e) => {
-        const q = query(
-          collection(db, 'empleos', e.id, 'postulaciones'),
-          where('uid', '==', usuario.uid)
-        );
+        const q = query(collection(db, 'empleos', e.id, 'postulaciones'), where('uid', '==', usuario.uid));
         const snap = await getDocs(q);
         if (!snap.empty) nuevos.add(e.id);
       }));
@@ -489,7 +484,7 @@ export default function Jobs() {
     if (!lastDocRef.current || cargandoMas || !hayMas) return;
     setCargandoMas(true);
     try {
-      const q    = query(collection(db, 'empleos'), orderBy('createdAt', 'desc'), startAfter(lastDocRef.current), limit(PAGE_SIZE));
+      const q    = query(collection(db, 'empleos'), orderBy('destacado', 'desc'), orderBy('createdAt', 'desc'), startAfter(lastDocRef.current), limit(PAGE_SIZE));
       const snap = await getDocs(q);
       const nuevos = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Empleo));
       setEmpleos((prev) => [...prev, ...nuevos]);
@@ -529,10 +524,8 @@ export default function Jobs() {
             </p>
           </div>
           {esEmpresa && (
-            <button
-              onClick={() => navigate('/mis-postulaciones')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-black active:scale-95"
-            >
+            <button onClick={() => navigate('/mis-postulaciones')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-black active:scale-95">
               <UserGroupIcon className="w-4 h-4" />
               Candidatos
             </button>
@@ -587,12 +580,22 @@ export default function Jobs() {
         )}
 
         {empleosFiltrados.map((empleo) => {
-          const esMio       = usuario?.uid === empleo.uid;
-          const postulado   = yaPostulado.has(empleo.id);
-          const tieneReqs   = (empleo.requisitos?.length ?? 0) > 0;
+          const esMio     = usuario?.uid === empleo.uid;
+          const postulado = yaPostulado.has(empleo.id);
 
           return (
-            <article key={empleo.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+            <article key={empleo.id} className={`bg-white dark:bg-gray-900 rounded-2xl border shadow-sm overflow-hidden ${
+              empleo.destacado
+                ? 'border-yellow-300 dark:border-yellow-600 ring-1 ring-yellow-200 dark:ring-yellow-700'
+                : 'border-gray-100 dark:border-gray-800'
+            }`}>
+              {empleo.destacado && (
+                <div className="flex items-center gap-1.5 px-4 py-1.5 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-700">
+                  <StarIcon className="w-3.5 h-3.5 text-yellow-500" />
+                  <span className="text-[10px] font-black text-yellow-600 dark:text-yellow-400">OFERTA DESTACADA</span>
+                </div>
+              )}
+
               <div className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-3">
@@ -601,7 +604,13 @@ export default function Jobs() {
                     </div>
                     <div>
                       <p className="font-black text-gray-800 dark:text-gray-100 text-sm">{empleo.titulo}</p>
-                      <p className="text-gray-500 dark:text-gray-400 text-xs">{empleo.empresa}</p>
+                      {/* Link al perfil de empresa */}
+                      <button
+                        onClick={() => empleo.uid && navigate(`/empresa/${empleo.uid}`)}
+                        className="text-xs text-blue-500 dark:text-blue-400 font-bold active:opacity-60 text-left"
+                      >
+                        {empleo.empresa}
+                      </button>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -639,7 +648,7 @@ export default function Jobs() {
 
                 <p className="text-gray-600 dark:text-gray-400 text-xs leading-relaxed mb-3 line-clamp-2">{empleo.descripcion}</p>
 
-                {tieneReqs && (
+                {(empleo.requisitos?.length ?? 0) > 0 && (
                   <div className="mb-3 flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 font-bold">
                     <ClipboardDocumentListIcon className="w-3.5 h-3.5" />
                     {empleo.requisitos!.length} requisito{empleo.requisitos!.length !== 1 ? 's' : ''} para postularse
@@ -720,14 +729,11 @@ export default function Jobs() {
       )}
 
       {postulando && (
-        <ModalPostularse
-          empleo={postulando}
-          onClose={() => setPostulando(null)}
-        />
+        <ModalPostularse empleo={postulando} onClose={() => setPostulando(null)} />
       )}
 
       <Navbar onMenuClick={() => setIsMenuOpen(true)} />
       <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
-                                                              }
+}
