@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot,
-  updateDoc, doc, deleteDoc, writeBatch,
+  updateDoc, doc, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../app/firebase';
 import { useTheme } from '../context/ThemeContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Menu from '../components/Menu';
 import {
@@ -44,7 +44,7 @@ const BG: Record<string, string> = {
   mensaje:   'bg-blue-50   dark:bg-blue-950/40',
 };
 
-const TIPOS_SOCIAL = ['like', 'comentario', 'reaccion', 'seguidor', 'mensaje'];
+// Tipos que pertenecen a zona empleo
 const TIPOS_EMPLEO = ['empleo', 'sistema'];
 
 function timeAgo(n: Notif): string {
@@ -63,12 +63,9 @@ function timeAgo(n: Notif): string {
 }
 
 export default function Notifications() {
-  const { user }   = useTheme();
-  const navigate   = useNavigate();
-  const location   = useLocation();
-  const holdTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const esSocial = location.pathname === '/notificaciones-social';
+  const { user }  = useTheme();
+  const navigate  = useNavigate();
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [notifs,      setNotifs]      = useState<Notif[]>([]);
   const [cargando,    setCargando]    = useState(true);
@@ -90,12 +87,8 @@ export default function Notifications() {
     return () => unsub();
   }, [user]);
 
-  // Filtro por modo
-  const notifsFiltradas = notifs.filter(n =>
-    esSocial
-      ? TIPOS_SOCIAL.includes(n.tipo)
-      : TIPOS_EMPLEO.includes(n.tipo)
-  );
+  // Filtrar solo notificaciones de empleo
+  const notifsFiltradas = notifs.filter(n => TIPOS_EMPLEO.includes(n.tipo));
 
   async function marcarLeida(id: string) {
     await updateDoc(doc(db, 'notifications', id), { leida: true });
@@ -157,13 +150,13 @@ export default function Notifications() {
       <Menu isOpen={menuAbierto} onClose={() => setMenuAbierto(false)} />
 
       <div className="max-w-lg mx-auto px-4 pt-6">
-
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <BellIcon className="w-6 h-6 text-[--sc-500]" />
+            {/* Azul para zona empleo */}
+            <BellIcon className="w-6 h-6 text-blue-500" />
             <h1 className="font-black text-xl text-gray-900 dark:text-white">Notificaciones</h1>
             {sinLeer > 0 && (
-              <span className="bg-[--sc-500] text-white text-xs font-black px-2 py-0.5 rounded-full">
+              <span className="bg-blue-500 text-white text-xs font-black px-2 py-0.5 rounded-full">
                 {sinLeer}
               </span>
             )}
@@ -171,7 +164,7 @@ export default function Notifications() {
           <div className="flex items-center gap-2">
             {sinLeer > 0 && !modoSelec && (
               <button onClick={marcarTodas}
-                className="flex items-center gap-1 text-xs font-bold text-[--sc-600] active:opacity-60">
+                className="flex items-center gap-1 text-xs font-bold text-blue-600 active:opacity-60">
                 <CheckIcon className="w-4 h-4" />
                 Leer todas
               </button>
@@ -204,13 +197,13 @@ export default function Notifications() {
 
         {cargando ? (
           <div className="flex justify-center pt-16">
-            <div className="w-8 h-8 border-4 border-[--sc-500] border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : notifsFiltradas.length === 0 ? (
           <div className="flex flex-col items-center gap-3 pt-20 text-center">
             <BellIcon className="w-16 h-16 text-gray-200 dark:text-gray-700" />
             <p className="font-black text-gray-400 dark:text-gray-500">Sin notificaciones</p>
-            <p className="text-sm text-gray-300 dark:text-gray-600">Acá aparecerán tus alertas de empleos, likes y más</p>
+            <p className="text-sm text-gray-300 dark:text-gray-600">Acá aparecerán tus alertas de empleos y más</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -246,7 +239,7 @@ export default function Notifications() {
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className="text-[10px] text-gray-300 dark:text-gray-600">{timeAgo(n)}</span>
-                    {!n.leida && <span className="w-2 h-2 rounded-full bg-[--sc-500]" />}
+                    {!n.leida && <span className="w-2 h-2 rounded-full bg-blue-500" />}
                   </div>
                 </button>
               );
@@ -256,4 +249,4 @@ export default function Notifications() {
       </div>
     </div>
   );
-}
+        }
