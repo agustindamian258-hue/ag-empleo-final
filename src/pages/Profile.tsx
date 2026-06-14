@@ -15,7 +15,7 @@ import {
   CameraIcon, HeartIcon, DocumentTextIcon,
   ChatBubbleOvalLeftIcon, ShareIcon, XMarkIcon,
   TrashIcon, PencilIcon, CheckIcon,
-  PaperAirplaneIcon,
+  PaperAirplaneIcon, BuildingOfficeIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import { subirArchivoCloudinary } from '../utils/cloudinary';
@@ -25,6 +25,16 @@ interface UserForm {
   cargoDeseado: string; nivelExperiencia: string;
   disponible: boolean; salarioEsperado: string;
 }
+
+interface EmpresaForm {
+  nombreEmpresa: string;
+  ciudad:        string;
+  rubro:         string;
+  descripcion:   string;
+  sitioWeb:      string;
+  contacto:      string;
+}
+
 interface FirestoreTimestamp { toDate: () => Date; }
 interface Post {
   id: string; text: string; mediaUrl: string; mediaType: string;
@@ -192,10 +202,14 @@ export default function Profile() {
   const zonaInicial: TabId = (location.state as { zona?: TabId } | null)?.zona ?? 'empleo';
 
   const [user,          setUser]          = useState<User | null>(null);
+  const [accountType,   setAccountType]   = useState<string>('');
   const [form,          setForm]          = useState<UserForm>({
     name: '', title: '', bio: '', ciudad: '',
     cargoDeseado: '', nivelExperiencia: 'Junior (0-2 años)',
     disponible: true, salarioEsperado: '',
+  });
+  const [empresaForm,    setEmpresaForm]    = useState<EmpresaForm>({
+    nombreEmpresa: '', ciudad: '', rubro: '', descripcion: '', sitioWeb: '', contacto: '',
   });
   const [fotoURL,        setFotoURL]        = useState('');
   const [guardando,      setGuardando]      = useState(false);
@@ -225,11 +239,20 @@ export default function Profile() {
       const snap = await getDoc(doc(db, 'users', uid));
       if (snap.exists()) {
         const d = snap.data();
+        setAccountType(d.accountType ?? '');
         setForm({
           name: d.name || '', title: d.title || '', bio: d.bio || '',
           ciudad: d.ciudad || '', cargoDeseado: d.cargoDeseado || '',
           nivelExperiencia: d.nivelExperiencia || 'Junior (0-2 años)',
           disponible: d.disponible ?? true, salarioEsperado: d.salarioEsperado || '',
+        });
+        setEmpresaForm({
+          nombreEmpresa: d.nombreEmpresa || '',
+          ciudad:        d.ciudad        || '',
+          rubro:         d.rubro         || '',
+          descripcion:   d.descripcion   || '',
+          sitioWeb:      d.sitioWeb      || '',
+          contacto:      d.contacto      || '',
         });
         if (d.photo) setFotoURL(`${d.photo}?t=${Date.now()}`);
       }
@@ -279,8 +302,7 @@ export default function Profile() {
       setStatus({ tipo: 'error', texto: `La foto no puede superar ${MAX_PHOTO_MB}MB.` });
       return;
     }
-    setSubiendoFoto(true);
-    setStatus(null);
+    setSubiendoFoto(true); setStatus(null);
     try {
       const { url } = await subirArchivoCloudinary(f);
       await Promise.all([
@@ -288,7 +310,6 @@ export default function Profile() {
         updateDoc(doc(db, 'users', user.uid), { photo: url, updatedAt: serverTimestamp() }),
       ]);
       await auth.currentUser?.reload();
-      // FIX 7: Timestamp fuerza al navegador a no usar la imagen cacheada.
       setFotoURL(`${url}?t=${Date.now()}`);
       setStatus({ tipo: 'exito', texto: '¡Foto actualizada!' });
     } catch (e) {
@@ -299,15 +320,34 @@ export default function Profile() {
 
   const saveProfile = async () => {
     if (!user) return;
-    if (!form.name.trim()) { setStatus({ tipo: 'error', texto: 'El nombre es obligatorio.' }); return; }
     setGuardando(true); setStatus(null);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        name: form.name.trim(), title: form.title.trim(), bio: form.bio.trim(),
-        ciudad: form.ciudad.trim(), cargoDeseado: form.cargoDeseado.trim(),
-        nivelExperiencia: form.nivelExperiencia, disponible: form.disponible,
-        salarioEsperado: form.salarioEsperado.trim(), updatedAt: serverTimestamp(),
-      });
+      if (accountType === 'empresa') {
+        if (!empresaForm.nombreEmpresa.trim()) {
+          setStatus({ tipo: 'error', texto: 'El nombre de la empresa es obligatorio.' });
+          setGuardando(false); return;
+        }
+        await updateDoc(doc(db, 'users', user.uid), {
+          nombreEmpresa: empresaForm.nombreEmpresa.trim(),
+          ciudad:        empresaForm.ciudad.trim(),
+          rubro:         empresaForm.rubro.trim(),
+          descripcion:   empresaForm.descripcion.trim(),
+          sitioWeb:      empresaForm.sitioWeb.trim(),
+          contacto:      empresaForm.contacto.trim(),
+          updatedAt:     serverTimestamp(),
+        });
+      } else {
+        if (!form.name.trim()) {
+          setStatus({ tipo: 'error', texto: 'El nombre es obligatorio.' });
+          setGuardando(false); return;
+        }
+        await updateDoc(doc(db, 'users', user.uid), {
+          name: form.name.trim(), title: form.title.trim(), bio: form.bio.trim(),
+          ciudad: form.ciudad.trim(), cargoDeseado: form.cargoDeseado.trim(),
+          nivelExperiencia: form.nivelExperiencia, disponible: form.disponible,
+          salarioEsperado: form.salarioEsperado.trim(), updatedAt: serverTimestamp(),
+        });
+      }
       setStatus({ tipo: 'exito', texto: '¡Perfil guardado!' });
     } catch (e) {
       console.error('[Profile] save:', e);
@@ -372,59 +412,123 @@ export default function Profile() {
     } else { navigator.clipboard.writeText(url).catch(() => {}); }
   }
 
-  const avatarUrl = fotoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name || 'U')}&background=${tabActiva === 'social' ? '7c3aed' : '3b82f6'}&color=fff&size=128`;
-  const inputCls = 'w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300]';
+  const esEmpresa      = accountType === 'empresa';
+  const avatarUrl      = fotoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(esEmpresa ? (empresaForm.nombreEmpresa || 'E') : (form.name || 'U'))}&background=${tabActiva === 'social' ? '7c3aed' : '3b82f6'}&color=fff&size=128`;
+  const inputCls       = 'w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[--sc-300]';
   const headerGradient = tabActiva === 'social' ? 'from-purple-600 to-purple-800' : 'from-blue-600 to-blue-800';
-  const postsZona = misPosts.filter((p) => p.zona === tabActiva);
+  const postsZona      = misPosts.filter((p) => p.zona === tabActiva);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-24">
       <Navbar onMenuClick={() => setMenuAbierto(true)} />
       <Menu isOpen={menuAbierto} onClose={() => setMenuAbierto(false)} />
       <div className="max-w-lg mx-auto px-4 pt-6 space-y-4">
+
         <div className={`bg-gradient-to-r ${headerGradient} rounded-3xl p-4 text-white text-center`}>
-          <p className="text-xs font-black uppercase tracking-widest opacity-75 mb-0.5">Perfil activo</p>
-          <p className="text-lg font-black">{tabActiva === 'social' ? '🌐 Zona Social' : '💼 Zona Empleo'}</p>
+          <p className="text-xs font-black uppercase tracking-widest opacity-75 mb-0.5">
+            {esEmpresa ? 'Cuenta empresa' : 'Perfil activo'}
+          </p>
+          <p className="text-lg font-black">
+            {esEmpresa ? '🏢 ' + (empresaForm.nombreEmpresa || 'Mi empresa') : tabActiva === 'social' ? '🌐 Zona Social' : '💼 Zona Empleo'}
+          </p>
         </div>
+
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <img src={avatarUrl} alt="foto de perfil" className="w-24 h-24 rounded-full border-4 border-[--sc-100] object-cover shadow-md" />
+            <img src={avatarUrl} alt="foto de perfil"
+              className={`w-24 h-24 border-4 border-[--sc-100] object-cover shadow-md ${esEmpresa ? 'rounded-2xl' : 'rounded-full'}`} />
             <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[var(--sc-600)] flex items-center justify-center cursor-pointer ring-2 ring-white dark:ring-gray-950 active:scale-90 transition-transform">
               {subiendoFoto ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <CameraIcon className="w-4 h-4 text-white" />}
               <input type="file" accept="image/*" onChange={handleFotoUpload} className="hidden" disabled={subiendoFoto} />
             </label>
           </div>
           <div className="text-center">
-            <p className="font-black text-lg text-gray-900 dark:text-white">{form.name || 'Tu nombre'}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{form.title || 'Tu título profesional'}</p>
-            {form.ciudad && <p className="text-xs text-gray-400 dark:text-gray-500">📍 {form.ciudad}</p>}
+            <p className="font-black text-lg text-gray-900 dark:text-white">
+              {esEmpresa ? (empresaForm.nombreEmpresa || 'Tu empresa') : (form.name || 'Tu nombre')}
+            </p>
+            {esEmpresa
+              ? empresaForm.rubro && <p className="text-sm text-blue-600 dark:text-blue-400">{empresaForm.rubro}</p>
+              : <p className="text-sm text-gray-500 dark:text-gray-400">{form.title || 'Tu título profesional'}</p>
+            }
+            {(esEmpresa ? empresaForm.ciudad : form.ciudad) && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">📍 {esEmpresa ? empresaForm.ciudad : form.ciudad}</p>
+            )}
           </div>
-          <div className="flex gap-6">
-            {[
-              { value: misPosts.length, label: 'Posts', icon: <DocumentTextIcon className="w-3.5 h-3.5" /> },
-              { value: seguidores, label: 'Seguidores' },
-              { value: siguiendo, label: 'Siguiendo' },
-              { value: totalLikes, label: 'Likes', icon: <HeartIcon className="w-3.5 h-3.5" /> },
-            ].map((s, i, arr) => (
-              <React.Fragment key={s.label}>
-                <div className="flex flex-col items-center">
-                  <span className="font-black text-lg text-gray-900 dark:text-white">{s.value}</span>
-                  <span className="text-xs text-gray-400 flex items-center gap-1">{s.icon}{s.label}</span>
-                </div>
-                {i < arr.length - 1 && <div className="w-px bg-gray-200 dark:bg-gray-700" />}
-              </React.Fragment>
+
+          {!esEmpresa && (
+            <div className="flex gap-6">
+              {[
+                { value: misPosts.length, label: 'Posts', icon: <DocumentTextIcon className="w-3.5 h-3.5" /> },
+                { value: seguidores, label: 'Seguidores' },
+                { value: siguiendo, label: 'Siguiendo' },
+                { value: totalLikes, label: 'Likes', icon: <HeartIcon className="w-3.5 h-3.5" /> },
+              ].map((s, i, arr) => (
+                <React.Fragment key={s.label}>
+                  <div className="flex flex-col items-center">
+                    <span className="font-black text-lg text-gray-900 dark:text-white">{s.value}</span>
+                    <span className="text-xs text-gray-400 flex items-center gap-1">{s.icon}{s.label}</span>
+                  </div>
+                  {i < arr.length - 1 && <div className="w-px bg-gray-200 dark:bg-gray-700" />}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+
+          {esEmpresa && (
+            <button
+              onClick={() => navigate(`/empresa/${user?.uid}`)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-black text-sm active:scale-95 transition-all">
+              <BuildingOfficeIcon className="w-4 h-4" />
+              Ver mi perfil público
+            </button>
+          )}
+        </div>
+
+        {/* Tabs solo para personas */}
+        {!esEmpresa && (
+          <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
+            {(['social', 'empleo'] as TabId[]).map((t) => (
+              <button key={t} onClick={() => setTabActiva(t)}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${tabActiva === t ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                {t === 'social' ? '🌐 Social' : '💼 Empleo'}
+              </button>
             ))}
           </div>
-        </div>
-        <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
-          {(['social', 'empleo'] as TabId[]).map((t) => (
-            <button key={t} onClick={() => setTabActiva(t)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${tabActiva === t ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-              {t === 'social' ? '🌐 Social' : '💼 Empleo'}
-            </button>
-          ))}
-        </div>
-        {tabActiva === 'social' && (
+        )}
+
+        {/* Formulario empresa */}
+        {esEmpresa && (
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
+            <h2 className="font-black text-gray-800 dark:text-white text-base flex items-center gap-2">
+              <BuildingOfficeIcon className="w-5 h-5 text-blue-600" />
+              Datos de la empresa
+            </h2>
+            {([
+              { label: 'Nombre de la empresa *', field: 'nombreEmpresa' as const, placeholder: 'Ej: Acme S.A.' },
+              { label: 'Ciudad',                 field: 'ciudad'        as const, placeholder: 'Ej: Córdoba' },
+              { label: 'Rubro',                  field: 'rubro'         as const, placeholder: 'Ej: Tecnología, Gastronomía' },
+              { label: 'Sitio web (opcional)',    field: 'sitioWeb'      as const, placeholder: 'https://miempresa.com' },
+              { label: 'Email o WhatsApp',        field: 'contacto'      as const, placeholder: 'Ej: rrhh@empresa.com' },
+            ]).map(({ label, field, placeholder }) => (
+              <div key={field} className="space-y-1">
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</label>
+                <input type="text" placeholder={placeholder} value={empresaForm[field]}
+                  onChange={(e) => setEmpresaForm({ ...empresaForm, [field]: e.target.value })}
+                  className={inputCls} maxLength={100} />
+              </div>
+            ))}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Descripción (opcional)</label>
+              <textarea value={empresaForm.descripcion}
+                onChange={(e) => { if (e.target.value.length <= MAX_BIO) setEmpresaForm({ ...empresaForm, descripcion: e.target.value }); }}
+                rows={3} maxLength={MAX_BIO} placeholder="Contá de qué se trata tu empresa..."
+                className={`${inputCls} resize-none`} />
+            </div>
+          </div>
+        )}
+
+        {/* Formulario persona - social */}
+        {!esEmpresa && tabActiva === 'social' && (
           <>
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
               <h2 className="font-black text-gray-800 dark:text-white text-base mb-3">Color zona Social</h2>
@@ -439,9 +543,9 @@ export default function Profile() {
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
               <h2 className="font-black text-gray-800 dark:text-white text-base">Editar perfil social</h2>
               {([
-                { label: 'Nombre completo', field: 'name' as const, placeholder: 'Ej: Juan Pérez' },
-                { label: 'Título profesional', field: 'title' as const, placeholder: 'Ej: Desarrollador Web' },
-                { label: 'Ciudad', field: 'ciudad' as const, placeholder: 'Ej: Buenos Aires' },
+                { label: 'Nombre completo',    field: 'name'   as const, placeholder: 'Ej: Juan Pérez' },
+                { label: 'Título profesional', field: 'title'  as const, placeholder: 'Ej: Desarrollador Web' },
+                { label: 'Ciudad',             field: 'ciudad' as const, placeholder: 'Ej: Buenos Aires' },
               ]).map(({ label, field, placeholder }) => (
                 <div key={field} className="space-y-1">
                   <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</label>
@@ -461,7 +565,9 @@ export default function Profile() {
             </div>
           </>
         )}
-        {tabActiva === 'empleo' && (
+
+        {/* Formulario persona - empleo */}
+        {!esEmpresa && tabActiva === 'empleo' && (
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 space-y-4">
             <h2 className="font-black text-gray-800 dark:text-white text-base">Perfil de empleo</h2>
             <div className="space-y-1">
@@ -499,17 +605,21 @@ export default function Profile() {
             </div>
           </div>
         )}
+
         {status && (
           <div className={`flex items-center gap-2 p-3 rounded-2xl text-sm font-bold ${status.tipo === 'exito' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`} role="alert">
             {status.tipo === 'exito' ? <CheckCircleIcon className="w-5 h-5 shrink-0" /> : <ExclamationCircleIcon className="w-5 h-5 shrink-0" />}
             {status.texto}
           </div>
         )}
+
         <button onClick={saveProfile} disabled={guardando}
           className="w-full bg-[--sc-500] hover:bg-[--sc-600] text-white font-black py-4 rounded-2xl transition-colors disabled:opacity-60">
           {guardando ? 'Guardando...' : 'Guardar perfil'}
         </button>
-        {postsZona.length > 0 && (
+
+        {/* Posts solo para personas */}
+        {!esEmpresa && postsZona.length > 0 && (
           <div className="space-y-3">
             <h2 className="font-black text-gray-800 dark:text-white text-base px-1">Mis publicaciones ({postsZona.length})</h2>
             {postsZona.map((p) => {
@@ -606,13 +716,15 @@ export default function Profile() {
             })}
           </div>
         )}
-        {postsZona.length === 0 && (
+
+        {!esEmpresa && postsZona.length === 0 && (
           <div className="text-center py-10 text-gray-400 dark:text-gray-600">
             <p className="text-4xl mb-2">📭</p>
             <p className="font-bold">Sin publicaciones en esta zona</p>
           </div>
         )}
       </div>
+
       {comentandoId && (
         <ModalComentarios postId={comentandoId} postUserId={comentandoUid}
           onClose={() => { setComentandoId(null); setComentandoUid(''); }} />
@@ -621,4 +733,4 @@ export default function Profile() {
       {reportandoId   && <div className="fixed inset-0 z-10" onClick={() => setReportandoId(null)} />}
     </div>
   );
-}
+                              }
