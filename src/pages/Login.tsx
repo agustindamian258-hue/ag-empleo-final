@@ -1,69 +1,53 @@
-// src/pages/Login.tsx
 import { auth, provider, db } from '../app/firebase';
-import { signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { signInWithPopup } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate, Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function Login() {
   const navigate                = useNavigate();
   const [cargando, setCargando] = useState<boolean>(false);
   const [error,    setError]    = useState<string>('');
 
-  useEffect(() => {
-    setCargando(true);
-    getRedirectResult(auth)
-      .then(async (result) => {
-        if (!result) { setCargando(false); return; }
-        const user    = result.user;
-        const userRef = doc(db, 'users', user.uid);
-        const snap    = await getDoc(userRef);
-        if (!snap.exists()) {
-          await setDoc(userRef, {
-            name:        user.displayName ?? 'Sin nombre',
-            email:       user.email       ?? '',
-            photo:       user.photoURL    ?? '',
-            ciudad:      '',
-            descripcion: '',
-            role:        'user',
-            accountType: '',
-            createdAt:   serverTimestamp(),
-            updatedAt:   serverTimestamp(),
-          });
-          navigate('/onboarding', { replace: true });
-        } else {
-          const data = snap.data();
-          if (!data.onboardingDone) {
-            navigate('/onboarding', { replace: true });
-          } else {
-            navigate('/', { replace: true });
-          }
-        }
-      })
-      .catch((e) => {
-        if (e instanceof FirebaseError &&
-            e.code === 'auth/popup-closed-by-user') {
-          setCargando(false); return;
-        }
-        console.error('[Login] Redirect result error:', e);
-        setError('No se pudo iniciar sesión. Intentá de nuevo.');
-        setCargando(false);
-      });
-  }, []);
-
   const handleLogin = async (): Promise<void> => {
     setCargando(true);
     setError('');
     try {
-      await signInWithRedirect(auth, provider);
+      const result  = await signInWithPopup(auth, provider);
+      const user    = result.user;
+      const userRef = doc(db, 'users', user.uid);
+      const snap    = await getDoc(userRef);
+      if (!snap.exists()) {
+        await setDoc(userRef, {
+          name:        user.displayName ?? 'Sin nombre',
+          email:       user.email       ?? '',
+          photo:       user.photoURL    ?? '',
+          ciudad:      '',
+          descripcion: '',
+          role:        'user',
+          accountType: '',
+          createdAt:   serverTimestamp(),
+          updatedAt:   serverTimestamp(),
+        });
+        navigate('/onboarding', { replace: true });
+      } else {
+        const data = snap.data();
+        if (!data.onboardingDone) {
+          navigate('/onboarding', { replace: true });
+        } else {
+          navigate('/', { replace: true });
+        }
+      }
     } catch (e) {
       if (e instanceof FirebaseError &&
           e.code === 'auth/popup-closed-by-user') {
-        setCargando(false); return;
+        setCargando(false);
+        return;
       }
       console.error('[Login] Error:', e);
       setError('No se pudo iniciar sesión. Intentá de nuevo.');
+    } finally {
       setCargando(false);
     }
   };
@@ -114,4 +98,4 @@ export default function Login() {
       </div>
     </div>
   );
-          }
+}
