@@ -7,8 +7,9 @@ interface BeforeInstallPromptEvent extends Event {
 
 export default function InstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [visible, setVisible] = useState(false);
-  const [yaInstalada, setYaInstalada] = useState(false);
+  const [visible,        setVisible]        = useState(false);
+  const [yaInstalada,    setYaInstalada]    = useState(false);
+  const [descartado,     setDescartado]     = useState(false);
 
   useEffect(() => {
     if (window.matchMedia('(display-mode: standalone)').matches) {
@@ -34,9 +35,10 @@ export default function InstallBanner() {
     setDeferredPrompt(null);
   };
 
-  const handleDismiss = () => setVisible(false);
+  const handleDismissBanner = () => setVisible(false);
+  const handleDismissBar    = () => setDescartado(true);
 
-  if (yaInstalada) return null;
+  if (yaInstalada || descartado) return null;
 
   return (
     <>
@@ -62,7 +64,7 @@ export default function InstallBanner() {
                 Instalar
               </button>
               <button
-                onClick={handleDismiss}
+                onClick={handleDismissBar}
                 className="text-gray-400 text-xs text-center active:scale-95 transition-transform"
               >
                 Ahora no
@@ -82,7 +84,7 @@ export default function InstallBanner() {
               </p>
             </div>
             <button
-              onClick={handleDismiss}
+              onClick={handleDismissBar}
               className="text-white/70 text-xs shrink-0 active:scale-95"
             >
               ✕
